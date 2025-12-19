@@ -42,4 +42,4 @@ app-example
 android/
 
 # iOS folder
-ios/
+ios/.mcp.json
