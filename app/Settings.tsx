@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Switch, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCEFRSettings } from './store/useCEFRSettings';
+import { useThemeSettings } from './store/useThemeSettings';
 import { supabase } from '../utils/supabase';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors } from '@/constants/Colors';
@@ -17,8 +18,15 @@ import { UsageQuotaDisplay } from '../components/subscription/UsageQuotaDisplay'
 
 const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
+const THEME_OPTIONS = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
 export default function Settings() {
   const { selectedLevels, dynamicCheck, setSelectedLevels, setDynamicCheck, hydrate } = useCEFRSettings();
+  const { themePreference, setThemePreference, hydrate: hydrateTheme } = useThemeSettings();
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
@@ -60,7 +68,7 @@ export default function Settings() {
   );
 
   useEffect(() => {
-    hydrate().then(() => setLoading(false));
+    Promise.all([hydrate(), hydrateTheme()]).then(() => setLoading(false));
     const fetchUser = async () => {
       const { data } = await supabase.auth.getUser();
       if (data?.user) {
@@ -69,7 +77,7 @@ export default function Settings() {
       }
     };
     fetchUser();
-  }, [hydrate]);
+  }, [hydrate, hydrateTheme]);
 
   useEffect(() => {
     AsyncStorage.getItem('availableVoices').then(json => {
@@ -209,6 +217,38 @@ export default function Settings() {
             </Text>
           </TouchableOpacity>
         </View>
+        {/* Appearance Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
+          <View style={styles.themeOptions}>
+            {THEME_OPTIONS.map(option => {
+              const isSelected = themePreference === option.value;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  onPress={() => setThemePreference(option.value)}
+                  accessibilityLabel={`Set theme to ${option.label}`}
+                  style={[
+                    styles.themeOption,
+                    {
+                      backgroundColor: isSelected ? theme.tint : 'transparent',
+                      borderColor: isSelected ? theme.tint : theme.icon,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.themeOptionText,
+                      { color: isSelected ? theme.background : theme.text },
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
         {CEFR_LEVELS.map(level => (
           <View key={level} style={styles.row}>
             <Text style={[styles.label, { color: theme.text }]}>{level}</Text>
@@ -229,19 +269,19 @@ export default function Settings() {
               key={langObj.code}
               onPress={() => router.push({ pathname: '/voice-picker-screen', params: { langCode: langObj.code } })}
               style={{
-                backgroundColor: 'white',
+                backgroundColor: theme.background,
                 borderRadius: 8,
                 padding: 14,
                 marginBottom: 8,
                 borderWidth: 1,
-                borderColor: '#E6F0FF',
+                borderColor: theme.icon,
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
               }}
             >
-              <Text style={{ fontSize: 18, color: '#11181C' }}>{langObj.name}</Text>
-              <Ionicons name="chevron-forward" size={22} color="#B0B0B0" />
+              <Text style={{ fontSize: 18, color: theme.text }}>{langObj.name}</Text>
+              <Ionicons name="chevron-forward" size={22} color={theme.icon} />
             </TouchableOpacity>
           ))}
         </View>
@@ -327,5 +367,20 @@ const styles = StyleSheet.create({
   restoreButtonText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  themeOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  themeOption: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  themeOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

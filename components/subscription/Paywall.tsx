@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,8 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { PurchasesPackage } from 'react-native-purchases';
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { getOfferings, purchasePackage, restorePurchases } from '../../services/revenuecatService';
+import { presentPaywall, restorePurchases } from '../../services/revenuecatService';
 import { useSubscriptionStore } from '../../app/store/useSubscriptionStore';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -75,10 +74,7 @@ const FEATURES: FeatureItem[] = [
 ];
 
 export const Paywall: React.FC<PaywallProps> = ({ visible, onClose, feature }) => {
-  const [packages, setPackages] = useState<PurchasesPackage[]>([]);
-  const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
 
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
@@ -86,42 +82,13 @@ export const Paywall: React.FC<PaywallProps> = ({ visible, onClose, feature }) =
 
   const { isPremium } = useSubscriptionStore();
 
-  useEffect(() => {
-    if (visible) {
-      loadOfferings();
-    }
-  }, [visible]);
-
-  const loadOfferings = async () => {
-    setLoading(true);
-    try {
-      const offerings = await getOfferings();
-      if (offerings?.current?.availablePackages) {
-        setPackages(offerings.current.availablePackages);
-        // Select the first package by default
-        if (offerings.current.availablePackages.length > 0) {
-          setSelectedPackage(offerings.current.availablePackages[0]);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load offerings:', error);
-    }
-    setLoading(false);
-  };
-
   const handlePurchase = async () => {
-    if (!selectedPackage) return;
-
     setPurchasing(true);
-    try {
-      const customerInfo = await purchasePackage(selectedPackage);
-      if (customerInfo) {
-        Alert.alert('Success', 'Thank you for subscribing!', [{ text: 'OK', onPress: onClose }]);
-      }
-    } catch (error: any) {
-      if (!error.userCancelled) {
-        Alert.alert('Purchase Failed', error.message || 'An error occurred during purchase.');
-      }
+    const result = await presentPaywall('premium');
+    if (result === 'purchased' || result === 'restored') {
+      Alert.alert('Success', 'Thank you for subscribing!', [{ text: 'OK', onPress: onClose }]);
+    } else if (result === 'error') {
+      Alert.alert('Purchase Failed', 'Unable to open the purchase screen. Please try again.');
     }
     setPurchasing(false);
   };
@@ -213,48 +180,11 @@ export const Paywall: React.FC<PaywallProps> = ({ visible, onClose, feature }) =
           </View>
 
           {/* Packages */}
-          {loading ? (
-            <ActivityIndicator size="large" color={tintColor} style={styles.loader} />
-          ) : (
-            <View style={styles.packagesSection}>
-              {packages.map((pkg) => (
-                <TouchableOpacity
-                  key={pkg.identifier}
-                  style={[
-                    styles.packageCard,
-                    { borderColor: selectedPackage?.identifier === pkg.identifier ? tintColor : textColor + '20' },
-                    selectedPackage?.identifier === pkg.identifier && { backgroundColor: tintColor + '10' },
-                  ]}
-                  onPress={() => setSelectedPackage(pkg)}
-                >
-                  <View style={styles.packageInfo}>
-                    <Text style={[styles.packageTitle, { color: textColor }]}>
-                      {pkg.product.title}
-                    </Text>
-                    <Text style={[styles.packagePrice, { color: tintColor }]}>
-                      {pkg.product.priceString}
-                    </Text>
-                    {pkg.product.subscriptionPeriod && (
-                      <Text style={[styles.packagePeriod, { color: textColor + '60' }]}>
-                        per {pkg.product.subscriptionPeriod}
-                      </Text>
-                    )}
-                  </View>
-                  <View
-                    style={[
-                      styles.radioButton,
-                      { borderColor: tintColor },
-                      selectedPackage?.identifier === pkg.identifier && { backgroundColor: tintColor },
-                    ]}
-                  >
-                    {selectedPackage?.identifier === pkg.identifier && (
-                      <Ionicons name="checkmark" size={16} color="#fff" />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+          <View style={styles.packagesSection}>
+            <Text style={[styles.packagesNote, { color: textColor + '80' }]}>
+              Choose your plan on the next screen. You can cancel anytime.
+            </Text>
+          </View>
         </ScrollView>
 
         {/* Purchase button */}
@@ -262,13 +192,13 @@ export const Paywall: React.FC<PaywallProps> = ({ visible, onClose, feature }) =
           <TouchableOpacity
             style={[styles.purchaseButton, { backgroundColor: tintColor }]}
             onPress={handlePurchase}
-            disabled={purchasing || !selectedPackage}
+            disabled={purchasing}
           >
             {purchasing ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.purchaseButtonText}>
-                Subscribe Now
+                Continue to Plans
               </Text>
             )}
           </TouchableOpacity>
@@ -378,44 +308,12 @@ const styles = StyleSheet.create({
   premiumLabel: {
     marginLeft: 8,
   },
-  loader: {
-    marginVertical: 32,
-  },
   packagesSection: {
-    gap: 12,
     marginBottom: 24,
   },
-  packageCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-  },
-  packageInfo: {
-    flex: 1,
-  },
-  packageTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  packagePrice: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  packagePeriod: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  radioButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+  packagesNote: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   footer: {
     paddingHorizontal: 16,
