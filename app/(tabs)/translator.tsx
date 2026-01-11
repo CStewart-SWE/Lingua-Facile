@@ -21,6 +21,13 @@ import { InputCard } from '../../components/translator/InputCard';
 import { LanguageSelector } from '../../components/translator/LanguageSelector';
 import { TranslationCard } from '../../components/translator/TranslationCard';
 
+// Usage tracking imports
+import { supabase } from '../../utils/supabase';
+import { useFeatureAccess } from '../../hooks/useFeatureAccess';
+import { checkAndLogUsage, UsageLimitExceededError } from '../../services/usageService';
+import { UsageWarningBanner } from '../../components/subscription/UsageQuotaDisplay';
+import { Paywall } from '../../components/subscription/Paywall';
+
 export default function TranslatorScreen() {
   const [inputText, setInputText] = useState('');
   const [draftInputText, setDraftInputText] = useState('');
@@ -37,6 +44,10 @@ export default function TranslatorScreen() {
   const [activeTab, setActiveTab] = useState<'examples' | 'synonyms' | 'tone'>('examples');
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
   const [languageModalType, setLanguageModalType] = useState<'source' | 'target' | null>(null);
+
+  // Usage tracking
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const { canPerformAction, isPremium } = useFeatureAccess();
 
   const languages = [
     { code: 'en', name: 'English' },
@@ -100,11 +111,29 @@ export default function TranslatorScreen() {
   const handleTranslate = async () => {
     if (!inputText.trim() || !sourceLang || !targetLang) return;
 
+    // Check usage limit before translating (for free users)
+    if (!isPremium && !canPerformAction('translation')) {
+      setPaywallVisible(true);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setTranslatedText('');
 
     try {
+      // Log usage for non-premium users
+      if (!isPremium) {
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData.user) {
+          await checkAndLogUsage(userData.user.id, 'translation', {
+            sourceLang,
+            targetLang,
+            textLength: inputText.length,
+          });
+        }
+      }
+
       const result = await translateWithDeepL({
         text: inputText,
         sourceLanguage: sourceLang,
@@ -119,6 +148,11 @@ export default function TranslatorScreen() {
       }
     } catch (error) {
       console.error('Translation error:', error);
+
+      if (error instanceof UsageLimitExceededError) {
+        setPaywallVisible(true);
+        return;
+      }
 
       if (error instanceof DeepLTranslationError) {
         setError(error.message);
@@ -179,6 +213,13 @@ export default function TranslatorScreen() {
 
   return (
       <View style={{ flex: 1, backgroundColor: '#F6F7FB' }}>
+        {/* Paywall Modal */}
+        <Paywall
+          visible={paywallVisible}
+          onClose={() => setPaywallVisible(false)}
+          feature="Translations"
+        />
+
         {/* Main content */}
         <ScrollView
           ref={scrollRef}
@@ -186,6 +227,14 @@ export default function TranslatorScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* Usage Warning Banner (only for free users when low on quota) */}
+          {!isPremium && (
+            <UsageWarningBanner
+              actionType="translation"
+              onUpgradePress={() => setPaywallVisible(true)}
+            />
+          )}
+
           {/* Language Selector */}
           <LanguageSelector
             sourceLang={sourceLang}

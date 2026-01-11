@@ -12,6 +12,13 @@ import * as Clipboard from 'expo-clipboard';
 import { CEFRInput } from '../../components/cefr/CEFRInput';
 import { useClipboardWatcher } from '../../hooks/useClipboardWatcher';
 
+// Usage tracking imports
+import { supabase } from '../../utils/supabase';
+import { useFeatureAccess } from '../../hooks/useFeatureAccess';
+import { checkAndLogUsage, UsageLimitExceededError } from '../../services/usageService';
+import { UsageWarningBanner } from '../../components/subscription/UsageQuotaDisplay';
+import { Paywall } from '../../components/subscription/Paywall';
+
 const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 export default function CEFRChecker() {
@@ -25,6 +32,10 @@ export default function CEFRChecker() {
   const [showAnalysis, setShowAnalysis] = useState(true);
   const [showResults, setShowResults] = useState(true);
   const [inputFocused, setInputFocused] = useState(false);
+
+  // Usage tracking
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const { canPerformAction, isPremium } = useFeatureAccess();
 
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
@@ -45,6 +56,12 @@ export default function CEFRChecker() {
   };
 
   const handleCheck = async () => {
+    // Check usage limit before analyzing (for free users)
+    if (!isPremium && !canPerformAction('cefr_analysis')) {
+      setPaywallVisible(true);
+      return;
+    }
+
     setShowAnalysis(true);
     setShowResults(true);
     setLoading(true);
@@ -52,12 +69,29 @@ export default function CEFRChecker() {
     setResult(null);
     setAnalysis(null);
     setAnalyzedInput('');
+
     try {
+      // Log usage for non-premium users
+      if (!isPremium) {
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData.user) {
+          await checkAndLogUsage(userData.user.id, 'cefr_analysis', {
+            textLength: input.length,
+            dynamicCheck,
+          });
+        }
+      }
+
       const res = await fetchCEFRLevels(input, selectedLevels, dynamicCheck);
       setResult(res);
       setAnalysis(res.analysis);
       setAnalyzedInput(input); // Save the input that was analyzed
     } catch (e: any) {
+      if (e instanceof UsageLimitExceededError) {
+        setPaywallVisible(true);
+        setLoading(false);
+        return;
+      }
       setError(e.message || 'An error occurred');
     } finally {
       setLoading(false);
@@ -70,7 +104,22 @@ export default function CEFRChecker() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F6F7FB' }}>
+      {/* Paywall Modal */}
+      <Paywall
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        feature="CEFR Analysis"
+      />
+
       <ScrollView ref={scrollRef} contentContainerStyle={[styles.container, { backgroundColor: '#F6F7FB' }]} keyboardShouldPersistTaps="handled">
+        {/* Usage Warning Banner (only for free users when low on quota) */}
+        {!isPremium && (
+          <UsageWarningBanner
+            actionType="cefr_analysis"
+            onUpgradePress={() => setPaywallVisible(true)}
+          />
+        )}
+
         <Animated.View entering={FadeIn.duration(500)}>
           <View style={{ alignItems: 'center', width: '100%' }}>
             {/* Use CEFRInput component */}
