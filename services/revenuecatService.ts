@@ -7,6 +7,7 @@ import Purchases, {
   PurchasesPackage,
   LOG_LEVEL,
 } from 'react-native-purchases';
+import PurchasesUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import { supabase } from '../utils/supabase';
 import { useSubscriptionStore, SubscriptionTier, SubscriptionStatus } from '../app/store/useSubscriptionStore';
 
@@ -81,6 +82,32 @@ export const getOfferings = async (): Promise<PurchasesOfferings | null> => {
     return null;
   }
 };
+export type PaywallOutcome = 'purchased' | 'restored' | 'cancelled' | 'error';
+
+export const presentPaywall = async (
+  requiredEntitlementIdentifier = 'premium'
+): Promise<PaywallOutcome> => {
+  try {
+    const result = await PurchasesUI.presentPaywall({
+      requiredEntitlementIdentifier,
+    });
+
+    switch (result) {
+      case PAYWALL_RESULT.PURCHASED:
+        return 'purchased';
+      case PAYWALL_RESULT.RESTORED:
+        return 'restored';
+      case PAYWALL_RESULT.CANCELLED:
+        return 'cancelled';
+      default:
+        return 'cancelled';
+    }
+  } catch (error) {
+    console.error('Failed to present paywall:', error);
+    return 'error';
+  }
+};
+
 
 /**
  * Purchase a subscription package
