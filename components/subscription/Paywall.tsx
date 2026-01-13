@@ -51,6 +51,13 @@ const FEATURES: FeatureItem[] = [
     premium: true,
   },
   {
+    icon: 'flash',
+    title: 'Smart Features',
+    description: 'Examples, Synonyms, Tone',
+    free: false,
+    premium: true,
+  },
+  {
     icon: 'chatbubbles',
     title: 'AI Chat Tutor',
     description: 'Practice conversations',

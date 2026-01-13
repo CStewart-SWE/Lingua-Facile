@@ -43,3 +43,15 @@ android/
 
 # iOS folder
 ios/.mcp.json
+ios/
+
+# Environment files
+*.env
+*.env.development
+
+# IDE folders
+.expo/
+.gemini/
+.idea/
+.vscode/
+

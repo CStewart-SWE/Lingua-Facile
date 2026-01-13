@@ -9,22 +9,28 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface TranslationCardProps {
   isLoading: boolean;
+  featuresLoading?: boolean;
   translatedText: string;
   copiedOutput: boolean;
   setCopiedOutput: (v: boolean) => void;
   targetLang: string | null;
   languages: { code: string; name: string }[];
-  handleNewTranslation: () => void; // Add this line
+  handleNewTranslation: () => void;
+  pronunciation?: string;
+  meaning?: string;
 }
 
 export const TranslationCard: React.FC<TranslationCardProps> = ({
   isLoading,
+  featuresLoading,
   translatedText,
   copiedOutput,
   setCopiedOutput,
   targetLang,
   languages,
-  handleNewTranslation
+  handleNewTranslation,
+  pronunciation,
+  meaning
 }) => {
   return (
     <Animated.View
@@ -75,9 +81,49 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
       ) : (
         <>
           <Text style={{ fontSize: 24, color: '#1976FF', fontWeight: '700', marginBottom: 4 }}>{translatedText}</Text>
-          <Text style={{ color: '#B0B0B0', fontSize: 16, marginBottom: 8 }}>wot-is-yor-neim</Text>
-          <Text style={{ color: '#B0B0B0', fontWeight: '600', marginBottom: 2 }}>MEANING</Text>
-          <Text style={{ color: '#11181C', fontSize: 15, marginBottom: 12 }}>{`This phrase is used to inquire about someone's name in a friendly and informal manner.`}</Text>
+          
+          {featuresLoading ? (
+            <View style={{ marginTop: 8 }}>
+              <MotiView
+                from={{ opacity: 0.4 }}
+                animate={{ opacity: 1 }}
+                transition={{ loop: true, type: 'timing', duration: 900, repeatReverse: true }}
+                style={{ height: 16, backgroundColor: '#F0F0F0', borderRadius: 8, marginBottom: 16, width: '40%' }}
+              />
+              <View style={{ marginBottom: 4 }}>
+                <View style={{ height: 12, width: 60, backgroundColor: '#F0F0F0', borderRadius: 6, marginBottom: 8 }} />
+                <MotiView
+                  from={{ opacity: 0.4 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ loop: true, type: 'timing', duration: 900, delay: 200, repeatReverse: true }}
+                  style={{ height: 14, backgroundColor: '#F0F0F0', borderRadius: 7, marginBottom: 8, width: '90%' }}
+                />
+                <MotiView
+                  from={{ opacity: 0.4 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ loop: true, type: 'timing', duration: 900, delay: 400, repeatReverse: true }}
+                  style={{ height: 14, backgroundColor: '#F0F0F0', borderRadius: 7, marginBottom: 12, width: '70%' }}
+                />
+              </View>
+            </View>
+          ) : (
+            <>
+              {pronunciation && <Text style={{ color: '#B0B0B0', fontSize: 16, marginBottom: 8, fontStyle: 'italic' }}>{pronunciation}</Text>}
+              
+              {meaning ? (
+                <>
+                  <Text style={{ color: '#B0B0B0', fontWeight: '600', marginBottom: 2 }}>MEANING</Text>
+                  <Text style={{ color: '#11181C', fontSize: 15, marginBottom: 12 }}>{meaning}</Text>
+                </>
+              ) : (
+                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, opacity: 0.6 }}>
+                     <Ionicons name="lock-closed" size={14} color="#B0B0B0" style={{ marginRight: 4 }} />
+                     <Text style={{ color: '#B0B0B0', fontSize: 14 }}>Meaning available with Premium</Text>
+                 </View>
+              )}
+            </>
+          )}
+
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <TouchableOpacity onPress={() => Alert.alert('Like pressed')} style={{ marginRight: 16 }}>

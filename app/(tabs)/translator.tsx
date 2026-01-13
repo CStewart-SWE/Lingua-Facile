@@ -4,12 +4,8 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Keyboard,
+  ActivityIndicator,
   Alert,
-  TouchableWithoutFeedback,
-  Modal,
-  FlatList,
-  Pressable,
 } from 'react-native';
 import { translateWithDeepL, DeepLTranslationError } from '@/services/deeplService';
 import * as Clipboard from 'expo-clipboard';
@@ -27,6 +23,7 @@ import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { checkAndLogUsage, UsageLimitExceededError } from '../../services/usageService';
 import { UsageWarningBanner } from '../../components/subscription/UsageQuotaDisplay';
 import { Paywall } from '../../components/subscription/Paywall';
+import { fetchTranslationFeatures } from '@/services/translatorFeatures';
 
 export default function TranslatorScreen() {
   const [inputText, setInputText] = useState('');
@@ -44,6 +41,16 @@ export default function TranslatorScreen() {
   const [activeTab, setActiveTab] = useState<'examples' | 'synonyms' | 'tone'>('examples');
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
   const [languageModalType, setLanguageModalType] = useState<'source' | 'target' | null>(null);
+  
+  // Features state
+  const [features, setFeatures] = useState<{
+    examples?: any[];
+    synonyms?: any[];
+    tone?: any[];
+    pronunciation?: string;
+    meaning?: string;
+  }>({});
+  const [featuresLoading, setFeaturesLoading] = useState(false);
 
   // Usage tracking
   const [paywallVisible, setPaywallVisible] = useState(false);
@@ -118,8 +125,10 @@ export default function TranslatorScreen() {
     }
 
     setIsLoading(true);
+    setFeaturesLoading(true);
     setError(null);
     setTranslatedText('');
+    setFeatures({}); // Reset features on new translation
 
     try {
       // Log usage for non-premium users
@@ -141,6 +150,22 @@ export default function TranslatorScreen() {
       });
 
       setTranslatedText(result.translatedText);
+      setIsLoading(false); // Stop loading main translation
+
+      // Fetch features for everyone (content varies by premium status)
+      try {
+          const featureData = await fetchTranslationFeatures(
+            result.translatedText, 
+            sourceLang, 
+            targetLang,
+            isPremium
+          );
+          setFeatures(featureData);
+      } catch (err) {
+          console.error("Failed to load features", err);
+      } finally {
+          setFeaturesLoading(false);
+      }
 
       // If source language was detected and different from selected, could show info
       if (result.detectedSourceLanguage && result.detectedSourceLanguage !== sourceLang) {
@@ -148,6 +173,8 @@ export default function TranslatorScreen() {
       }
     } catch (error) {
       console.error('Translation error:', error);
+      setIsLoading(false);
+      setFeaturesLoading(false);
 
       if (error instanceof UsageLimitExceededError) {
         setPaywallVisible(true);
@@ -162,8 +189,6 @@ export default function TranslatorScreen() {
         setError(errorMessage);
         Alert.alert('Translation Error', errorMessage);
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -173,6 +198,7 @@ export default function TranslatorScreen() {
     setInputText(translatedText);
     setDraftInputText(translatedText);
     setTranslatedText(inputText);
+    setFeatures({});
   };
 
   const openLanguageModal = (type: 'source' | 'target') => {
@@ -202,6 +228,7 @@ export default function TranslatorScreen() {
     setError(null);
     setCopiedInput(false);
     setCopiedOutput(false);
+    setFeatures({});
     setActiveTab('examples');
     setTimeout(() => {
       scrollRef?.current?.scrollTo({ y: 0, animated: true });
@@ -265,12 +292,15 @@ export default function TranslatorScreen() {
           {(isLoading || translatedText !== '') && (
             <TranslationCard
               isLoading={isLoading}
+              featuresLoading={featuresLoading}
               translatedText={translatedText}
               copiedOutput={copiedOutput}
               setCopiedOutput={setCopiedOutput}
               targetLang={targetLang}
               languages={languages}
               handleNewTranslation={handleNewTranslation}
+              pronunciation={features.pronunciation}
+              meaning={features.meaning}
             />
           )}
 
@@ -294,19 +324,79 @@ export default function TranslatorScreen() {
               </View>
               {/* Everything below the tabs is wrapped in a View to ensure it is part of the ScrollView and scrollable */}
               <View>
-                {/* Tab Content Visual Only */}
+                {/* Tab Content */}
                 <View
-                  style={{ backgroundColor: 'white', borderRadius: 16, marginHorizontal: 12, marginBottom: 50, padding: 16 }}
+                  style={{ backgroundColor: 'white', borderRadius: 16, marginHorizontal: 12, marginBottom: 50, padding: 16, minHeight: 100 }}
                   onStartShouldSetResponder={() => true}
                 >
-                  {activeTab === 'examples' && (
-                    <Text style={{ color: '#11181C', fontSize: 15 }} selectable>{`Come ti chiami? Io sono felice di conoscerti.\nWhat is your name? I am happy to meet you.`}</Text>
-                  )}
-                  {activeTab === 'synonyms' && (
-                    <Text style={{ color: '#11181C', fontSize: 15 }} selectable>Synonyms visual placeholder</Text>
-                  )}
-                  {activeTab === 'tone' && (
-                    <Text style={{ color: '#11181C', fontSize: 15 }} selectable>Tone visual placeholder</Text>
+                  {!isPremium ? (
+                    <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 20 }}>
+                      <View style={{ backgroundColor: '#E6F0FF', padding: 12, borderRadius: 50, marginBottom: 12 }}>
+                        <Ionicons name="lock-closed" size={24} color="#1976FF" />
+                      </View>
+                      <Text style={{ fontSize: 16, fontWeight: '600', color: '#11181C', marginBottom: 4 }}>Unlock Smart Features</Text>
+                      <Text style={{ fontSize: 14, color: '#687076', textAlign: 'center', marginBottom: 16, paddingHorizontal: 20 }}>
+                        Get instant examples, synonyms, and tone variations for every translation.
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => setPaywallVisible(true)}
+                        style={{ backgroundColor: '#1976FF', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 }}
+                      >
+                        <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>Upgrade to Premium</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : featuresLoading ? (
+                    <View style={{ width: '100%', alignItems: 'flex-start' }}>
+                      {[...Array(3)].map((_, idx) => (
+                        <MotiView
+                          key={idx}
+                          from={{ opacity: 0.4 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ loop: true, type: 'timing', duration: 900, delay: idx * 120, repeatReverse: true }}
+                          style={{
+                            height: 16,
+                            width: idx === 0 ? '90%' : idx === 1 ? '70%' : '50%',
+                            backgroundColor: '#E6F0FF',
+                            borderRadius: 8,
+                            marginBottom: 12,
+                          }}
+                        />
+                      ))}
+                    </View>
+                  ) : (
+                    <>
+                      {activeTab === 'examples' && (
+                        features.examples ? features.examples.map((item, i) => (
+                           <View key={i} style={{ marginBottom: 16 }}>
+                             <Text style={{ fontSize: 16, fontWeight: '500', color: '#11181C', marginBottom: 2 }}>{item.target}</Text>
+                             <Text style={{ fontSize: 14, color: '#687076' }}>{item.source}</Text>
+                           </View>
+                        )) : <Text style={{ color: '#B0B0B0' }}>No examples available.</Text>
+                      )}
+
+                      {activeTab === 'synonyms' && (
+                        features.synonyms ? features.synonyms.map((item, i) => (
+                          <View key={i} style={{ marginBottom: 16 }}>
+                            <Text style={{ fontSize: 16, fontWeight: '600', color: '#11181C', marginBottom: 2 }}>{item.word}</Text>
+                            <Text style={{ fontSize: 14, color: '#687076', fontStyle: 'italic' }}>{item.nuance}</Text>
+                          </View>
+                        )) : <Text style={{ color: '#B0B0B0' }}>No synonyms available.</Text>
+                      )}
+
+                      {activeTab === 'tone' && (
+                        features.tone ? features.tone.map((item, i) => (
+                          <View key={i} style={{ marginBottom: 16 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                <View style={{ backgroundColor: '#E6F0FF', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginRight: 8 }}>
+                                    <Text style={{ fontSize: 12, color: '#1976FF', fontWeight: '700' }}>{item.tone.toUpperCase()}</Text>
+                                </View>
+                            </View>
+                            <Text style={{ fontSize: 16, fontWeight: '500', color: '#11181C', marginBottom: 2 }}>{item.text}</Text>
+                            <Text style={{ fontSize: 14, color: '#687076' }}>{item.context}</Text>
+                          </View>
+                        )) : <Text style={{ color: '#B0B0B0' }}>No tone variations available.</Text>
+                      )}
+                    </>
                   )}
                 </View>
               </View>
