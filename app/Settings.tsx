@@ -1,11 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Switch, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
+import {
+  View,
+  Text,
+  Switch,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Platform,
+  Modal,
+  SafeAreaView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useCEFRSettings } from './store/useCEFRSettings';
 import { useThemeSettings } from './store/useThemeSettings';
 import { supabase } from '../utils/supabase';
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors } from '@/constants/Colors';
+import { useColorScheme } from '@/hooks/useColorScheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useNavigation } from 'expo-router';
 
@@ -14,9 +25,6 @@ import { useSubscriptionStore } from './store/useSubscriptionStore';
 import { useUsageStore } from './store/useUsageStore';
 import { restorePurchases, logOutRevenueCat } from '../services/revenuecatService';
 import { Paywall } from '../components/subscription/Paywall';
-import { UsageQuotaDisplay } from '../components/subscription/UsageQuotaDisplay';
-
-const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 const THEME_OPTIONS = [
   { value: 'system', label: 'System' },
@@ -24,15 +32,13 @@ const THEME_OPTIONS = [
   { value: 'dark', label: 'Dark' },
 ];
 
+const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
 export default function Settings() {
   const { selectedLevels, dynamicCheck, setSelectedLevels, setDynamicCheck, hydrate } = useCEFRSettings();
   const { themePreference, setThemePreference, hydrate: hydrateTheme } = useThemeSettings();
-  const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
-  const [availableVoices, setAvailableVoices] = useState<any[]>([]);
-  const [voiceMap, setVoiceMap] = useState<{ [lang: string]: string }>({});
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const router = useRouter();
@@ -40,35 +46,26 @@ export default function Settings() {
 
   // Subscription state
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const [cefrModalVisible, setCefrModalVisible] = useState(false);
+  const [themeModalVisible, setThemeModalVisible] = useState(false);
   const [restoringPurchases, setRestoringPurchases] = useState(false);
-  const { tier, isPremium, isGrandfathered, grandfatheredUntil, expiresAt } = useSubscriptionStore();
+  const { isPremium, expiresAt } = useSubscriptionStore();
 
+  // Configure navigation header
   useEffect(() => {
-    // Set the back button title to 'Home' to hide (tabs) as the previous screen
-    if (navigation && navigation.setOptions) {
-      navigation.setOptions({ headerBackTitle: 'Home' });
+    if (navigation) {
+      navigation.setOptions({
+        headerTitle: 'Settings',
+        headerBackTitle: 'Home',
+        headerLargeTitle: true,
+        headerStyle: { backgroundColor: '#F2F2F7' },
+        headerShadowVisible: false,
+      });
     }
   }, [navigation]);
 
-  const translatorLanguages = [
-    { code: 'en', name: 'English' },
-    { code: 'es', name: 'Spanish' },
-    { code: 'fr', name: 'French' },
-    { code: 'de', name: 'German' },
-    { code: 'it', name: 'Italian' },
-    { code: 'pt', name: 'Portuguese' },
-    { code: 'ru', name: 'Russian' },
-    { code: 'ja', name: 'Japanese' },
-    { code: 'ko', name: 'Korean' },
-    { code: 'zh', name: 'Chinese' },
-  ];
-  const supportedLanguages = React.useMemo(
-    () => translatorLanguages.filter(l => availableVoices.some(v => v.language.startsWith(l.code))),
-    [availableVoices, translatorLanguages]
-  );
-
   useEffect(() => {
-    Promise.all([hydrate(), hydrateTheme()]).then(() => setLoading(false));
+    Promise.all([hydrate(), hydrateTheme()]);
     const fetchUser = async () => {
       const { data } = await supabase.auth.getUser();
       if (data?.user) {
@@ -79,17 +76,41 @@ export default function Settings() {
     fetchUser();
   }, [hydrate, hydrateTheme]);
 
-  useEffect(() => {
-    AsyncStorage.getItem('availableVoices').then(json => {
-      if (json) setAvailableVoices(JSON.parse(json));
-    });
-    AsyncStorage.getItem('pronunciationVoice').then(v => {
-      if (v) setSelectedVoice(v);
-    });
-    AsyncStorage.getItem('pronunciationVoiceMap').then(json => {
-      if (json) setVoiceMap(JSON.parse(json));
-    });
-  }, [availableVoices]);
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await logOutRevenueCat();
+            useSubscriptionStore.getState().reset();
+            useUsageStore.getState().reset();
+            await supabase.auth.signOut();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRestorePurchases = async () => {
+    setRestoringPurchases(true);
+    try {
+      const customerInfo = await restorePurchases();
+      if (customerInfo?.entitlements.active.premium) {
+        Alert.alert('Success', 'Purchases restored successfully.');
+      } else {
+        Alert.alert('No Subscription', 'No active subscription found.');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setRestoringPurchases(false);
+    }
+  };
 
   const toggleLevel = (level: string) => {
     if (selectedLevels.includes(level)) {
@@ -99,288 +120,322 @@ export default function Settings() {
     }
   };
 
-  const toggleDynamicCheck = () => {
-    setDynamicCheck(!dynamicCheck);
-  };
+  const SettingItem = ({ icon, label, value, onPress, isDestructive = false, rightElement, hasChevron = true }: any) => (
+    <TouchableOpacity
+      style={[styles.itemContainer, { backgroundColor: theme.background }]}
+      onPress={onPress}
+      disabled={!onPress}
+    >
+      <View style={styles.itemLeft}>
+        <View style={[styles.iconBox, { backgroundColor: isDestructive ? '#FFEBEE' : '#F5F7FA' }]}>
+          <Ionicons name={icon} size={20} color={isDestructive ? '#D32F2F' : '#1976FF'} />
+        </View>
+        <Text style={[styles.itemLabel, { color: isDestructive ? '#D32F2F' : theme.text }]}>{label}</Text>
+      </View>
+      <View style={styles.itemRight}>
+        {value && <Text style={styles.itemValue}>{value}</Text>}
+        {rightElement}
+        {onPress && !rightElement && hasChevron && (
+          <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
+        )}
+      </View>
+    </TouchableOpacity>
+  );
 
-  const handleRestorePurchases = async () => {
-    setRestoringPurchases(true);
-    try {
-      const customerInfo = await restorePurchases();
-      if (customerInfo) {
-        const hasActive = Object.keys(customerInfo.entitlements.active).length > 0;
-        if (hasActive) {
-          Alert.alert('Restored', 'Your subscription has been restored!');
-        } else {
-          Alert.alert('No Subscription', 'No active subscription found to restore.');
-        }
-      }
-    } catch (error: any) {
-      Alert.alert('Restore Failed', error.message || 'An error occurred while restoring purchases.');
-    }
-    setRestoringPurchases(false);
-  };
-
-  const handleSignOut = async () => {
-    await logOutRevenueCat();
-    useSubscriptionStore.getState().reset();
-    useUsageStore.getState().reset();
-    await supabase.auth.signOut();
-    Alert.alert('Signed out', 'You have been signed out.');
-  };
-
-  // Format date for display
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return 'N/A';
-    return new Date(dateStr).toLocaleDateString();
-  };
-
-  if (loading) return <Text>Loading...</Text>;
+  const SectionHeader = ({ title }: { title: string }) => (
+    <Text style={styles.sectionHeader}>{title}</Text>
+  );
 
   return (
-      <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.background, flexGrow: 1 }]}>
-        {/* Paywall Modal */}
-        <Paywall
-          visible={paywallVisible}
-          onClose={() => setPaywallVisible(false)}
-        />
-
-        {/* Account Info */}
-        <View style={{ marginBottom: 24, marginTop: 0 }}>
-          <Text style={{ fontSize: 16, color: theme.icon, textAlign: 'center' }}>
-            {isGuest
-              ? 'Signed in as guest'
-              : userEmail
-                ? `Signed in as: ${userEmail}`
-                : 'Signed in'}
-          </Text>
-        </View>
-
-        {/* Subscription Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Subscription</Text>
-
-          {/* Current Plan */}
-          <View style={[styles.planCard, { backgroundColor: isPremium ? '#E8F5E9' : '#FFF3E0' }]}>
-            <View style={styles.planHeader}>
-              <Ionicons
-                name={isPremium ? 'star' : 'person'}
-                size={24}
-                color={isPremium ? '#4CAF50' : '#FF9800'}
-              />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={[styles.planName, { color: theme.text }]}>
-                  {isPremium ? 'Premium' : 'Free Plan'}
-                </Text>
-                {isGrandfathered && grandfatheredUntil && (
-                  <Text style={{ fontSize: 12, color: '#FF9800' }}>
-                    Trial ends: {formatDate(grandfatheredUntil)}
-                  </Text>
-                )}
-                {isPremium && expiresAt && !isGrandfathered && (
-                  <Text style={{ fontSize: 12, color: theme.icon }}>
-                    Renews: {formatDate(expiresAt)}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {!isPremium && (
-              <TouchableOpacity
-                style={[styles.upgradeButton, { backgroundColor: theme.tint }]}
-                onPress={() => setPaywallVisible(true)}
-              >
-                <Ionicons name="star" size={18} color="#fff" />
-                <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
-              </TouchableOpacity>
-            )}
+    <View style={[styles.container, { backgroundColor: '#F2F2F7' }]}>
+      <Paywall visible={paywallVisible} onClose={() => setPaywallVisible(false)} />
+      
+      {/* CEFR Selection Modal */}
+      <Modal visible={cefrModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <View style={[styles.modalContainer, { backgroundColor: '#F2F2F7' }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select CEFR Levels</Text>
+            <TouchableOpacity onPress={() => setCefrModalVisible(false)} style={styles.modalDoneBtn}>
+              <Text style={styles.modalDoneText}>Done</Text>
+            </TouchableOpacity>
           </View>
-
-          {/* Usage Stats (for free users) */}
-          {!isPremium && (
-            <View style={styles.usageSection}>
-              <Text style={[styles.usageTitle, { color: theme.text }]}>Daily Usage</Text>
-              <UsageQuotaDisplay actionType="translation" onUpgradePress={() => setPaywallVisible(true)} />
-              <UsageQuotaDisplay actionType="cefr_analysis" onUpgradePress={() => setPaywallVisible(true)} />
-              <UsageQuotaDisplay actionType="verb_analysis" onUpgradePress={() => setPaywallVisible(true)} />
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.sectionGroup}>
+              {CEFR_LEVELS.map((level) => (
+                <View key={level} style={[styles.itemContainer, { backgroundColor: theme.background }]}>
+                  <Text style={[styles.itemLabel, { marginLeft: 0 }]}>{level}</Text>
+                  <Switch
+                    value={selectedLevels.includes(level)}
+                    onValueChange={() => toggleLevel(level)}
+                  />
+                </View>
+              ))}
             </View>
-          )}
-
-          {/* Restore Purchases */}
-          <TouchableOpacity
-            style={styles.restoreButton}
-            onPress={handleRestorePurchases}
-            disabled={restoringPurchases}
-          >
-            <Text style={[styles.restoreButtonText, { color: theme.tint }]}>
-              {restoringPurchases ? 'Restoring...' : 'Restore Purchases'}
+            <Text style={styles.modalHelperText}>
+              Select the levels you want to include in the complexity analysis.
             </Text>
-          </TouchableOpacity>
+          </ScrollView>
         </View>
-        {/* Appearance Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
-          <View style={styles.themeOptions}>
-            {THEME_OPTIONS.map(option => {
-              const isSelected = themePreference === option.value;
-              return (
+      </Modal>
+
+      {/* Theme Selection Modal */}
+      <Modal visible={themeModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <View style={[styles.modalContainer, { backgroundColor: '#F2F2F7' }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Appearance</Text>
+            <TouchableOpacity onPress={() => setThemeModalVisible(false)} style={styles.modalDoneBtn}>
+              <Text style={styles.modalDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <View style={styles.sectionGroup}>
+              {THEME_OPTIONS.map((option) => (
                 <TouchableOpacity
                   key={option.value}
                   onPress={() => setThemePreference(option.value)}
-                  accessibilityLabel={`Set theme to ${option.label}`}
-                  style={[
-                    styles.themeOption,
-                    {
-                      backgroundColor: isSelected ? theme.tint : 'transparent',
-                      borderColor: isSelected ? theme.tint : theme.icon,
-                    },
-                  ]}
+                  style={[styles.itemContainer, { backgroundColor: theme.background }]}
                 >
-                  <Text
-                    style={[
-                      styles.themeOptionText,
-                      { color: isSelected ? theme.background : theme.text },
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
+                  <Text style={[styles.itemLabel, { marginLeft: 0 }]}>{option.label}</Text>
+                  {themePreference === option.value && (
+                    <Ionicons name="checkmark" size={20} color="#1976FF" />
+                  )}
                 </TouchableOpacity>
-              );
-            })}
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
+      >
+        {/* Account Profile Card */}
+        <View style={styles.profileCard}>
+          <View style={styles.avatar}>
+             <Text style={styles.avatarText}>
+                {userEmail ? userEmail.charAt(0).toUpperCase() : 'G'}
+             </Text>
           </View>
-        </View>
-        {CEFR_LEVELS.map(level => (
-          <View key={level} style={styles.row}>
-            <Text style={[styles.label, { color: theme.text }]}>{level}</Text>
-            <Switch
-              value={selectedLevels.includes(level)}
-              onValueChange={() => toggleLevel(level)}
-            />
+          <View style={styles.profileInfo}>
+             <Text style={styles.profileName}>{isGuest ? 'Guest User' : userEmail}</Text>
+             <Text style={styles.profilePlan}>{isPremium ? 'Premium Member' : 'Free Plan'}</Text>
           </View>
-        ))}
-        <View style={styles.row}>
-          <Text style={[styles.label, { color: theme.text }]}>Show only next CEFR level after analysis</Text>
-          <Switch value={dynamicCheck} onValueChange={toggleDynamicCheck} />
+          {!isPremium && (
+             <TouchableOpacity style={styles.upgradeBtn} onPress={() => setPaywallVisible(true)}>
+                <Text style={styles.upgradeBtnText}>Upgrade</Text>
+             </TouchableOpacity>
+          )}
         </View>
-        <View style={{ marginBottom: 16 }}>
-          <Text style={{ color: theme.text, marginBottom: 8, fontWeight: '700', fontSize: 24, textAlign: 'left' }}>Modify Language Voice</Text>
-          {supportedLanguages.map(langObj => (
-            <TouchableOpacity
-              key={langObj.code}
-              onPress={() => router.push({ pathname: '/voice-picker-screen', params: { langCode: langObj.code } })}
-              style={{
-                backgroundColor: theme.background,
-                borderRadius: 8,
-                padding: 14,
-                marginBottom: 8,
-                borderWidth: 1,
-                borderColor: theme.icon,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Text style={{ fontSize: 18, color: theme.text }}>{langObj.name}</Text>
-              <Ionicons name="chevron-forward" size={22} color={theme.icon} />
-            </TouchableOpacity>
-          ))}
+
+        <SectionHeader title="PREFERENCES" />
+        <View style={styles.sectionGroup}>
+           <SettingItem
+              icon="color-palette"
+              label="Theme"
+              value={themePreference.charAt(0).toUpperCase() + themePreference.slice(1)}
+              onPress={() => setThemeModalVisible(true)}
+           />
+           <SettingItem
+              icon="mic"
+              label="Speech Voice"
+              onPress={() => router.push({ pathname: '/voice-picker-screen', params: { langCode: 'en' } })}
+           />
         </View>
-        <View style={{ flex: 1 }} />
-        <TouchableOpacity
-          style={[styles.signOutButton, { backgroundColor: '#e74c3c' }]}
-          onPress={handleSignOut}
-          accessibilityLabel="Sign out"
-        >
-          <Text style={styles.signOutButtonText}>Sign Out</Text>
-        </TouchableOpacity>
+
+        <SectionHeader title="LEARNING TOOLS" />
+        <View style={styles.sectionGroup}>
+           <SettingItem
+              icon="speedometer"
+              label="CEFR Levels"
+              value={selectedLevels.join(', ')}
+              onPress={() => setCefrModalVisible(true)}
+           />
+           <SettingItem
+              icon="flash"
+              label="Dynamic Analysis"
+              rightElement={
+                 <Switch value={dynamicCheck} onValueChange={setDynamicCheck} />
+              }
+           />
+        </View>
+
+        <SectionHeader title="SUBSCRIPTION" />
+        <View style={styles.sectionGroup}>
+           <SettingItem
+              icon="cart"
+              label="Restore Purchases"
+              onPress={handleRestorePurchases}
+              hasChevron={false}
+           />
+           {isPremium && (
+              <SettingItem
+                 icon="calendar"
+                 label="Expires"
+                 value={expiresAt ? new Date(expiresAt).toLocaleDateString() : 'Never'}
+              />
+           )}
+        </View>
+
+        <SectionHeader title="ACCOUNT" />
+        <View style={styles.sectionGroup}>
+           <SettingItem
+              icon="log-out"
+              label="Sign Out"
+              isDestructive
+              onPress={handleSignOut}
+              hasChevron={false}
+           />
+        </View>
+        
+        <Text style={styles.versionText}>Version 1.0.0 (Build 1)</Text>
       </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 24, backgroundColor: '#fff' },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  label: { fontSize: 18 },
-  signOutButton: {
-    backgroundColor: '#e74c3c',
-    padding: 14,
-    borderRadius: 8,
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: Platform.OS === 'android' ? 20 : 0, 
+    paddingHorizontal: 16,
+    paddingBottom: 40,
+  },
+  profileCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 5,
-    marginBottom: 16,
-  },
-  signOutButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  // Subscription styles
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 16,
-  },
-  planCard: {
+    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
+    marginTop: 20,
+    marginBottom: 24,
   },
-  planHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  planName: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  upgradeButton: {
-    flexDirection: 'row',
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E1E1E1',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    marginRight: 12,
   },
-  upgradeButtonText: {
+  avatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#666',
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 2,
+  },
+  profilePlan: {
+    fontSize: 14,
+    color: '#666',
+  },
+  upgradeBtn: {
+    backgroundColor: '#1976FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  upgradeBtnText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
   },
-  usageSection: {
-    marginBottom: 16,
-  },
-  usageTitle: {
-    fontSize: 16,
+  sectionHeader: {
+    fontSize: 13,
     fontWeight: '600',
+    color: '#6D6D72',
     marginBottom: 8,
+    marginLeft: 12,
+    marginTop: 12,
   },
-  restoreButton: {
-    alignItems: 'center',
-    paddingVertical: 12,
+  sectionGroup: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 12,
   },
-  restoreButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  themeOptions: {
+  itemContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5EA',
+  },
+  itemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  itemLabel: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  itemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  themeOption: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+  itemValue: {
+    fontSize: 15,
+    color: '#8E8E93',
   },
-  themeOptionText: {
-    fontSize: 14,
+  versionText: {
+    textAlign: 'center',
+    color: '#8E8E93',
+    fontSize: 13,
+    marginTop: 20,
+    marginBottom: 40,
+  },
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#C6C6C8',
+    backgroundColor: '#fff', // Ensure header has background
+  },
+  modalTitle: {
+    fontSize: 17,
     fontWeight: '600',
+  },
+  modalDoneBtn: {
+    padding: 8,
+  },
+  modalDoneText: {
+    color: '#1976FF',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  modalContent: {
+    padding: 24,
+  },
+  modalHelperText: {
+    fontSize: 13,
+    color: '#6D6D72',
+    textAlign: 'center',
+    marginTop: 16,
   },
 });

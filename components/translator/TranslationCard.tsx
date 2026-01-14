@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -36,103 +36,94 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
     <Animated.View
       entering={FadeIn.duration(500)}
       exiting={FadeOut.duration(350)}
-      style={{ backgroundColor: 'white', borderRadius: 20, marginHorizontal: 12, marginBottom: 16, padding: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}
+      style={styles.cardContainer}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ fontWeight: '600', color: '#11181C', fontSize: 16 }}>{languages.find(l => l.code === targetLang)?.name || 'English'}</Text>
-          <TouchableOpacity
-            onPress={async () => {
-              if (translatedText) {
-                // Get the user's per-language voice map from AsyncStorage
-                const voiceMapJson = await AsyncStorage.getItem('pronunciationVoiceMap');
-                let voiceMap = {};
-                if (voiceMapJson) voiceMap = JSON.parse(voiceMapJson);
-                const langCode = (targetLang || 'en').split('-')[0];
-                const selectedVoiceId = voiceMap[langCode];
-                const voices = await Speech.getAvailableVoicesAsync();
-                let selectedVoice = voices.find(v => v.identifier === selectedVoiceId) || voices.find(v => v.language.startsWith(langCode)) || voices[0];
-                Speech.speak(translatedText, { language: targetLang || 'en', voice: selectedVoice?.identifier });
-              }
-            }}
-            style={{ marginLeft: 6, padding: 6, borderRadius: 20 }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="play-circle-outline" size={28} color="#1976FF" />
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity onPress={handleNewTranslation} style={{ backgroundColor: '#F6F7FB', borderRadius: 16, padding: 4 }}>
-          <Ionicons name="close" size={18} color="#B0B0B0" />
+      <View style={styles.header}>
+        <Text style={styles.langLabel}>
+          {languages.find(l => l.code === targetLang)?.name || 'English'}
+        </Text>
+        <TouchableOpacity onPress={handleNewTranslation} style={styles.closeButton}>
+          <Ionicons name="close" size={16} color="#666" />
         </TouchableOpacity>
       </View>
+
       {isLoading ? (
-        <View>
+        <View style={styles.loadingContainer}>
           {[...Array(2)].map((_, idx) => (
             <MotiView
               key={idx}
               from={{ opacity: 0.4 }}
               animate={{ opacity: 1 }}
               transition={{ loop: true, type: 'timing', duration: 900, delay: idx * 120, repeatReverse: true }}
-              style={{ height: 24, backgroundColor: '#E6F0FF', borderRadius: 8, marginBottom: 12, width: idx === 0 ? '80%' : '60%' }}
+              style={[styles.skeletonLine, { width: idx === 0 ? '80%' : '60%' }]}
             />
           ))}
-          <Text style={{ color: '#B0B0B0', fontSize: 16 }}>Translating...</Text>
+          <Text style={styles.loadingText}>Translating...</Text>
         </View>
       ) : (
         <>
-          <Text style={{ fontSize: 24, color: '#1976FF', fontWeight: '700', marginBottom: 4 }}>{translatedText}</Text>
+          <Text style={styles.translatedText}>{translatedText}</Text>
           
           {featuresLoading ? (
-            <View style={{ marginTop: 8 }}>
+            <View style={{ marginTop: 12 }}>
               <MotiView
                 from={{ opacity: 0.4 }}
                 animate={{ opacity: 1 }}
                 transition={{ loop: true, type: 'timing', duration: 900, repeatReverse: true }}
-                style={{ height: 16, backgroundColor: '#F0F0F0', borderRadius: 8, marginBottom: 16, width: '40%' }}
+                style={[styles.skeletonLine, { width: '40%', height: 16 }]}
               />
-              <View style={{ marginBottom: 4 }}>
-                <View style={{ height: 12, width: 60, backgroundColor: '#F0F0F0', borderRadius: 6, marginBottom: 8 }} />
-                <MotiView
-                  from={{ opacity: 0.4 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ loop: true, type: 'timing', duration: 900, delay: 200, repeatReverse: true }}
-                  style={{ height: 14, backgroundColor: '#F0F0F0', borderRadius: 7, marginBottom: 8, width: '90%' }}
-                />
-                <MotiView
-                  from={{ opacity: 0.4 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ loop: true, type: 'timing', duration: 900, delay: 400, repeatReverse: true }}
-                  style={{ height: 14, backgroundColor: '#F0F0F0', borderRadius: 7, marginBottom: 12, width: '70%' }}
-                />
-              </View>
+               <MotiView
+                from={{ opacity: 0.4 }}
+                animate={{ opacity: 1 }}
+                transition={{ loop: true, type: 'timing', duration: 900, delay: 200, repeatReverse: true }}
+                style={[styles.skeletonLine, { width: '90%', height: 14 }]}
+              />
             </View>
           ) : (
-            <>
-              {pronunciation && <Text style={{ color: '#B0B0B0', fontSize: 16, marginBottom: 8, fontStyle: 'italic' }}>{pronunciation}</Text>}
+            <View style={styles.featuresContainer}>
+              {pronunciation && (
+                <Text style={styles.pronunciation}>{pronunciation}</Text>
+              )}
               
               {meaning ? (
-                <>
-                  <Text style={{ color: '#B0B0B0', fontWeight: '600', marginBottom: 2 }}>MEANING</Text>
-                  <Text style={{ color: '#11181C', fontSize: 15, marginBottom: 12 }}>{meaning}</Text>
-                </>
+                <View style={styles.meaningContainer}>
+                  <Text style={styles.meaningLabel}>MEANING</Text>
+                  <Text style={styles.meaningText}>{meaning}</Text>
+                </View>
               ) : (
-                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, opacity: 0.6 }}>
-                     <Ionicons name="lock-closed" size={14} color="#B0B0B0" style={{ marginRight: 4 }} />
-                     <Text style={{ color: '#B0B0B0', fontSize: 14 }}>Meaning available with Premium</Text>
+                 <View style={styles.premiumLock}>
+                     <Ionicons name="lock-closed" size={12} color="#B0B0B0" style={{ marginRight: 4 }} />
+                     <Text style={styles.premiumText}>Meaning available with Premium</Text>
                  </View>
               )}
-            </>
+            </View>
           )}
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity onPress={() => Alert.alert('Like pressed')} style={{ marginRight: 16 }}>
-                <Ionicons name="thumbs-up-outline" size={22} color="#1976FF" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => Alert.alert('Dislike pressed')} style={{ marginRight: 16 }}>
-                <Ionicons name="thumbs-down-outline" size={22} color="#1976FF" />
-              </TouchableOpacity>
+          <View style={styles.footer}>
+            <View style={styles.leftActions}>
+                <TouchableOpacity
+                    onPress={async () => {
+                      if (translatedText) {
+                        const voiceMapJson = await AsyncStorage.getItem('pronunciationVoiceMap');
+                        let voiceMap: any = {};
+                        if (voiceMapJson) voiceMap = JSON.parse(voiceMapJson);
+                        const langCode = (targetLang || 'en').split('-')[0];
+                        const selectedVoiceId = voiceMap[langCode];
+                        const voices = await Speech.getAvailableVoicesAsync();
+                        let selectedVoice = voices.find(v => v.identifier === selectedVoiceId) || voices.find(v => v.language.startsWith(langCode)) || voices[0];
+                        Speech.speak(translatedText, { language: targetLang || 'en', voice: selectedVoice?.identifier });
+                      }
+                    }}
+                    style={styles.actionIcon}
+                  >
+                    <Ionicons name="volume-high-outline" size={24} color="#1976FF" />
+                  </TouchableOpacity>
+                  
+                <TouchableOpacity onPress={() => Alert.alert('Favorite pressed')} style={styles.actionIcon}>
+                   <Ionicons name="heart-outline" size={24} color="#666" />
+                </TouchableOpacity>
             </View>
+
             <TouchableOpacity
               onPress={async () => {
                 if (translatedText) {
@@ -141,17 +132,17 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
                   setTimeout(() => setCopiedOutput(false), 1200);
                 }
               }}
-              style={{
-                backgroundColor: '#E6F0FF',
-                borderRadius: 12,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                flexDirection: 'row',
-                alignItems: 'center',
-              }}
+              style={[styles.copyButton, copiedOutput && styles.copyButtonActive]}
             >
-              <Ionicons name={copiedOutput ? 'checkmark-outline' : 'clipboard-outline'} size={18} color={copiedOutput ? '#43B581' : '#1976FF'} style={{ marginRight: 4 }} />
-              <Text style={{ color: copiedOutput ? '#43B581' : '#1976FF', fontWeight: '600', fontSize: 15 }}>{copiedOutput ? 'Copied!' : 'Copy'}</Text>
+              <Ionicons 
+                name={copiedOutput ? 'checkmark' : 'copy-outline'} 
+                size={16} 
+                color={copiedOutput ? '#fff' : '#1976FF'} 
+                style={{ marginRight: 6 }} 
+              />
+              <Text style={[styles.copyText, copiedOutput && { color: '#fff' }]}>
+                {copiedOutput ? 'Copied' : 'Copy'}
+              </Text>
             </TouchableOpacity>
           </View>
         </>
@@ -159,3 +150,122 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
     </Animated.View>
   );
 };
+
+const styles = StyleSheet.create({
+  cardContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 24,
+    shadowColor: '#1976FF',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  langLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1976FF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  closeButton: {
+    backgroundColor: '#F5F7FA',
+    borderRadius: 12,
+    padding: 6,
+  },
+  loadingContainer: {
+    paddingVertical: 12,
+  },
+  loadingText: {
+    marginTop: 8,
+    color: '#A0A0A0',
+    fontSize: 14,
+  },
+  skeletonLine: {
+    height: 20,
+    backgroundColor: '#E6F0FF',
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  translatedText: {
+    fontSize: 26,
+    fontWeight: '600',
+    color: '#1976FF',
+    marginBottom: 16,
+    lineHeight: 34,
+  },
+  featuresContainer: {
+    marginBottom: 20,
+  },
+  pronunciation: {
+    color: '#666',
+    fontSize: 16,
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  meaningContainer: {
+    marginTop: 8,
+  },
+  meaningLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#A0A0A0',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  meaningText: {
+    fontSize: 15,
+    color: '#333',
+    lineHeight: 22,
+  },
+  premiumLock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    opacity: 0.6,
+  },
+  premiumText: {
+    color: '#B0B0B0',
+    fontSize: 13,
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 16,
+  },
+  leftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  actionIcon: {
+    padding: 4,
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E6F0FF',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  copyButtonActive: {
+    backgroundColor: '#43B581',
+  },
+  copyText: {
+    color: '#1976FF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+});

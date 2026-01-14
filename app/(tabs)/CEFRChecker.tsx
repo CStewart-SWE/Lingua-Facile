@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, ActivityIndicator, ScrollView, StyleSheet, Modal, TouchableOpacity, Keyboard, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Keyboard, Pressable, TouchableOpacity } from 'react-native';
 import { fetchCEFRLevels, CEFRResponse } from '../../services/cefrService';
-import {getVerbData} from "@/services/getVerbData";
+import { getVerbData } from "@/services/getVerbData";
 import { useCEFRSettings } from '../store/useCEFRSettings';
 import { Ionicons } from '@expo/vector-icons';
-import { useColorScheme } from '@/hooks/useColorScheme';
-import { Colors } from '@/constants/Colors';
-import Animated, { FadeIn, FadeOut, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { MotiView } from 'moti';
-import * as Clipboard from 'expo-clipboard';
 import { CEFRInput } from '../../components/cefr/CEFRInput';
 import { useClipboardWatcher } from '../../hooks/useClipboardWatcher';
 
@@ -21,8 +18,17 @@ import { Paywall } from '../../components/subscription/Paywall';
 
 const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
+const LEVEL_COLORS: Record<string, string> = {
+  A1: '#2ecc71',
+  A2: '#27ae60',
+  B1: '#f1c40f',
+  B2: '#e67e22',
+  C1: '#e74c3c',
+  C2: '#8e44ad',
+};
+
 export default function CEFRChecker() {
-  const { selectedLevels, dynamicCheck, setSelectedLevels, hydrate } = useCEFRSettings();
+  const { selectedLevels, dynamicCheck, hydrate } = useCEFRSettings();
   const [input, setInput] = useState('');
   const [result, setResult] = useState<CEFRResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -37,10 +43,6 @@ export default function CEFRChecker() {
   const [paywallVisible, setPaywallVisible] = useState(false);
   const { canPerformAction, isPremium } = useFeatureAccess();
 
-  const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme ?? 'light'];
-
-  // Use custom clipboard watcher hook
   const hasClipboardContent = useClipboardWatcher();
 
   useEffect(() => {
@@ -56,7 +58,6 @@ export default function CEFRChecker() {
   };
 
   const handleCheck = async () => {
-    // Check usage limit before analyzing (for free users)
     if (!isPremium && !canPerformAction('cefr_analysis')) {
       setPaywallVisible(true);
       return;
@@ -71,7 +72,6 @@ export default function CEFRChecker() {
     setAnalyzedInput('');
 
     try {
-      // Log usage for non-premium users
       if (!isPremium) {
         const { data: userData } = await supabase.auth.getUser();
         if (userData.user) {
@@ -85,7 +85,7 @@ export default function CEFRChecker() {
       const res = await fetchCEFRLevels(input, selectedLevels, dynamicCheck);
       setResult(res);
       setAnalysis(res.analysis);
-      setAnalyzedInput(input); // Save the input that was analyzed
+      setAnalyzedInput(input);
     } catch (e: any) {
       if (e instanceof UsageLimitExceededError) {
         setPaywallVisible(true);
@@ -99,20 +99,23 @@ export default function CEFRChecker() {
 
     console.log(await getVerbData(input));
   };
-  // Add a ref for the ScrollView
+
   const scrollRef = React.useRef<ScrollView>(null);
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F6F7FB' }}>
-      {/* Paywall Modal */}
+    <View style={styles.mainContainer}>
       <Paywall
         visible={paywallVisible}
         onClose={() => setPaywallVisible(false)}
         feature="CEFR Analysis"
       />
 
-      <ScrollView ref={scrollRef} contentContainerStyle={[styles.container, { backgroundColor: '#F6F7FB' }]} keyboardShouldPersistTaps="handled">
-        {/* Usage Warning Banner (only for free users when low on quota) */}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {!isPremium && (
           <UsageWarningBanner
             actionType="cefr_analysis"
@@ -120,186 +123,135 @@ export default function CEFRChecker() {
           />
         )}
 
-        <Animated.View entering={FadeIn.duration(500)}>
-          <View style={{ alignItems: 'center', width: '100%' }}>
-            {/* Use CEFRInput component */}
-            <CEFRInput
-              input={input}
-              setInput={setInput}
-              loading={loading}
-              onSubmit={() => {
-                if (input.trim() && !loading) {
-                  Keyboard.dismiss();
-                  handleCheck();
-                }
-              }}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              inputFocused={inputFocused}
-              hasClipboardContent={hasClipboardContent}
-            />
-            {/* Paste from clipboard button removed, now inside CEFRInput */}
-            <Animated.View entering={FadeIn.delay(200).duration(500)} style={{ width: '100%', maxWidth: 500 }}>
-              <Pressable
-                style={({ pressed }) => [
-                  {
-                    marginTop: 4,
-                    marginBottom: 18,
-                    borderRadius: 16,
-                    paddingVertical: 16,
-                    paddingHorizontal: 24,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: (!input.trim() || loading)
-                      ? '#D6E4FF'
-                      : (pressed ? '#1976FFcc' : '#1976FF'),
-                    shadowColor: '#1976FF',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.12,
-                    shadowRadius: 6,
-                    elevation: 2,
-                    opacity: (!input.trim() || loading) ? 0.6 : 1,
-                    borderWidth: 0,
-                    width: '100%',
-                  },
-                ]}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  handleCheck();
-                }}
-                disabled={loading || !input.trim()}
-                android_ripple={{ color: '#1976FF22' }}
-              >
-                <Text style={{ color: (!input.trim() || loading) ? '#1976FF' : '#fff', fontWeight: 'bold', fontSize: 18, letterSpacing: 0.5 }}>
-                  {loading ? 'Checking...' : 'Check CEFR Levels'}
-                </Text>
-              </Pressable>
+        <Animated.View entering={FadeIn.duration(500)} style={styles.inputSection}>
+          <CEFRInput
+            input={input}
+            setInput={setInput}
+            loading={loading}
+            onSubmit={() => {
+              if (input.trim() && !loading) {
+                Keyboard.dismiss();
+                handleCheck();
+              }
+            }}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+            inputFocused={inputFocused}
+            hasClipboardContent={hasClipboardContent}
+          />
+          
+          <Pressable
+            style={({ pressed }) => [
+              styles.checkButton,
+              (!input.trim() || loading) && styles.checkButtonDisabled,
+              pressed && styles.checkButtonPressed
+            ]}
+            onPress={() => {
+              Keyboard.dismiss();
+              handleCheck();
+            }}
+            disabled={loading || !input.trim()}
+          >
+            {loading ? (
+                <Text style={styles.checkButtonText}>Analyzing...</Text>
+            ) : (
+                <>
+                    <Ionicons name="sparkles" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.checkButtonText}>Check Complexity</Text>
+                </>
+            )}
+          </Pressable>
+        </Animated.View>
+
+        <View style={styles.settingsBadge}>
+           <Ionicons name={dynamicCheck ? 'flash' : 'list'} size={14} color="#666" style={{ marginRight: 6 }} />
+           <Text style={styles.settingsText}>
+             {dynamicCheck ? 'Dynamic Level Detection' : `Target: ${selectedLevels.join(', ')}`}
+           </Text>
+        </View>
+
+        {error && (
+            <Animated.View entering={FadeIn} style={styles.errorContainer}>
+                <Ionicons name="alert-circle" size={24} color="#e74c3c" />
+                <Text style={styles.errorText}>{error}</Text>
             </Animated.View>
-          </View>
-        </Animated.View>
-        <Animated.View entering={FadeIn.delay(100).duration(400)} style={{ alignItems: 'center', marginBottom: 18 }}>
-          <View style={{
-            backgroundColor: '#E6F0FF',
-            borderRadius: 18,
-            paddingVertical: 9,
-            paddingHorizontal: 22,
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginBottom: 2,
-            borderWidth: 0,
-            shadowColor: '#1976FF',
-            shadowOpacity: 0.10,
-            shadowRadius: 8,
-            shadowOffset: { width: 0, height: 2 },
-            elevation: 2,
-            minWidth: 220,
-            maxWidth: '90%',
-            alignSelf: 'center',
-            justifyContent: 'center',
-          }}>
-            <Ionicons name={dynamicCheck ? 'flash-outline' : 'list-outline'} size={20} color={'#1976FF'} style={{ marginRight: 10 }} />
-            <Text style={{ color: '#1976FF', fontWeight: 'bold', fontSize: 16, letterSpacing: 0.2, textAlign: 'center' }}>
-              {dynamicCheck
-                ? 'Dynamic Check: Next Highest Level'
-                : `Levels: ${selectedLevels.join(', ')}`}
-            </Text>
-          </View>
-        </Animated.View>
-        {error && <Animated.Text entering={FadeIn.duration(400)} style={[styles.error, { color: '#e74c3c' }]}>{error}</Animated.Text>}
+        )}
+
         {analysis && showAnalysis && (
           <Animated.View
-            entering={FadeIn.duration(500)}
-            exiting={FadeOut.duration(350)}
-            style={[styles.analysisContainer, { marginTop: 7 }]}
+            entering={FadeIn.duration(600).springify()}
+            exiting={FadeOut.duration(300)}
+            style={styles.analysisCard}
           >
-            <Text style={[styles.analysisTitle, { color: theme.text }]}>Overall CEFR Level: <Text style={styles.analysisLevel}>{analysis.level}</Text></Text>
-            <Text style={[styles.analysisJustificationLabel, { color: theme.icon }]}>Justification:</Text>
-            <Text style={[styles.analysisJustification, { color: theme.text }]}>{analysis.justification}</Text>
-            <Text style={[styles.analysisInputLabel, { color: theme.icon }]}>Input Analyzed:</Text>
-            <Text style={[styles.analysisInput, { color: theme.text }]}>{analyzedInput}</Text>
-            <Pressable
-              style={({ pressed }) => [
-                styles.prettyButton,
-                {
-                  flexDirection: 'row', // Ensure icon is left of text
-                  backgroundColor: pressed ? '#cd6053' : '#ff4d4f', // Tint red
-                  marginTop: 18,
-                  borderWidth: 1.5,
-                  borderColor: '#cd6053',
-                  shadowColor: '#cd6053',
-                },
-              ]}
-              onPress={() => {
-                setShowAnalysis(false);
-                setShowResults(false);
-                setInput(''); // Clear input when hiding analysis
-              }}
-              android_ripple={{ color: '#e74c3c22' }}
-            >
-              <Ionicons name="close-circle-outline" size={18} color={theme.background} style={{ marginRight: 7 }} />
-              <Text style={[styles.prettyButtonText, { color: theme.background, fontWeight: 'bold', fontSize: 16 }]}>Clear</Text>
-            </Pressable>
+            <View style={styles.analysisHeader}>
+                <Text style={styles.analysisTitle}>Overall Level</Text>
+                <View style={[styles.levelBadgeBig, { backgroundColor: LEVEL_COLORS[analysis.level] || '#999' }]}>
+                    <Text style={styles.levelBadgeTextBig}>{analysis.level}</Text>
+                </View>
+            </View>
+            
+            <View style={styles.divider} />
+            
+            <Text style={styles.analysisLabel}>Why this level?</Text>
+            <Text style={styles.analysisText}>{analysis.justification}</Text>
+            
+            <Text style={styles.analysisLabel}>Analyzed Text</Text>
+            <Text style={[styles.analysisText, { fontStyle: 'italic', opacity: 0.8 }]}>"{analyzedInput}"</Text>
+
+            <TouchableOpacity onPress={() => setShowAnalysis(false)} style={styles.dismissButton}>
+                <Text style={styles.dismissText}>Dismiss Analysis</Text>
+            </TouchableOpacity>
           </Animated.View>
         )}
+
         {result && showResults && (
-          <Animated.View
-            entering={FadeIn.duration(500)}
-            exiting={FadeOut.duration(350)}
-            style={{ marginTop: 24, marginBottom: 80 }} // Add marginBottom to push last result above tab bar
-          >
+          <View style={styles.resultsList}>
+            <Text style={styles.sectionHeader}>Detailed Breakdown</Text>
             {(
               (dynamicCheck && analysis?.level)
                 ? result.results.filter(r => r.level === getNextLevel(analysis.level)[0])
                 : result.results.filter(r => selectedLevels.includes(r.level))
-            ).map((r, idx, arr) => (
-              <Animated.View
+            ).map((r, idx) => (
+              <MotiView
                 key={idx}
-                entering={FadeIn.delay(100 * idx).duration(400)}
-                exiting={FadeOut.duration(350)}
-                style={{
-                  marginBottom: 16, // Always 16, let parent handle last margin
-                  padding: 18,
-                  backgroundColor: '#F7FAFF',
-                  borderRadius: 14,
-                  shadowColor: '#1976FF',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.08,
-                  shadowRadius: 6,
-                  elevation: 2,
-                  borderWidth: 1.5,
-                  borderColor: '#D6E4FF',
-                }}
+                from={{ opacity: 0, translateY: 20 }}
+                animate={{ opacity: 1, translateY: 0 }}
+                transition={{ type: 'timing', duration: 500, delay: idx * 100 }}
+                style={styles.resultCard}
               >
-                <Text style={{ fontWeight: 'bold', fontSize: 17, color: '#1976FF', marginBottom: 4 }}>Level: {r.level}</Text>
-                <Text style={{ fontSize: 15, color: '#222', marginBottom: 2 }}>Sentence:</Text>
-                <Text style={{ fontSize: 15, color: '#333', marginBottom: 6 }}>{r.sentence}</Text>
-                <Text style={{ fontSize: 14, color: '#1976FF', fontWeight: '500', marginBottom: 2 }}>Explanation:</Text>
-                <Text style={{ fontSize: 14, color: '#555' }}>{r.explanation}</Text>
-              </Animated.View>
+                <View style={[styles.cardHeader, { borderLeftColor: LEVEL_COLORS[r.level] || '#999' }]}>
+                   <View style={[styles.miniBadge, { backgroundColor: LEVEL_COLORS[r.level] || '#999' }]}>
+                      <Text style={styles.miniBadgeText}>{r.level}</Text>
+                   </View>
+                   <Text style={styles.cardTitle}>Suggested Improvement</Text>
+                </View>
+                
+                <View style={styles.cardContent}>
+                    <Text style={styles.sentenceLabel}>Original Sentence:</Text>
+                    <Text style={styles.sentenceText}>&quot;{r.sentence}&quot;</Text>
+                    
+                    <View style={styles.explanationBox}>
+                        <Ionicons name="information-circle-outline" size={20} color="#1976FF" style={{ marginTop: 2 }} />
+                        <Text style={styles.explanationText}>{r.explanation}</Text>
+                    </View>
+                </View>
+              </MotiView>
             ))}
-          </Animated.View>
+          </View>
         )}
+
         {loading && (
-          <Animated.View entering={FadeIn.duration(400)} style={styles.resultContainer}>
-            {(() => {
-              // Determine how many placeholders to show
-              let count = 1;
-              if (!dynamicCheck && selectedLevels.length > 0) count = selectedLevels.length;
-              return Array.from({ length: count }).map((_, idx) => (
+          <View style={styles.loadingContainer}>
+             {[1, 2, 3].map((i) => (
                 <MotiView
-                  key={idx}
-                  from={{ opacity: 0.4 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ loop: true, type: 'timing', duration: 900, delay: idx * 120, repeatReverse: true }}
-                  style={styles.placeholderCard}
-                >
-                  <View style={styles.placeholderBarShort} />
-                  <View style={styles.placeholderBar} />
-                  <View style={styles.placeholderBar} />
-                </MotiView>
-              ));
-            })()}
-          </Animated.View>
+                    key={i}
+                    from={{ opacity: 0.3 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ loop: true, type: 'timing', duration: 1000, delay: i * 200 }}
+                    style={styles.skeletonCard}
+                />
+             ))}
+          </View>
         )}
       </ScrollView>
     </View>
@@ -307,196 +259,216 @@ export default function CEFRChecker() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  mainContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F6F7FB',
   },
-  container: {
+  scrollContent: {
     flexGrow: 1,
-    padding: 24,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
+    padding: 16,
+    paddingBottom: 100,
+  },
+  inputSection: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  checkButton: {
+    flexDirection: 'row',
+    backgroundColor: '#1976FF',
+    width: '100%',
+    maxWidth: 500,
+    paddingVertical: 16,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1976FF',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
     elevation: 4,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  headerIconButton: {
-    marginLeft: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    flexShrink: 0,
-  },
-  input: {
-    borderWidth: 1.5,
-    borderColor: '#ccc',
-    borderRadius: 12,
-    padding: 16,
-    minHeight: 60,
-    marginBottom: 18,
-    fontSize: 17,
-    backgroundColor: '#f7f7f7',
-  },
-  error: {
-    color: 'red',
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  analysisContainer: {
-    marginTop: 20,
-    padding: 12,
-    backgroundColor: '#e6f7ee',
-    borderRadius: 8,
-  },
-  analysisTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2a7',
-    textAlign: 'center',
-  },
-  analysisLevel: {
-    color: '#1a5',
-    fontWeight: 'bold',
-    fontSize: 20,
-  },
-  analysisJustificationLabel: {
-    marginTop: 8,
-    fontWeight: 'bold',
-    color: '#2a7',
-    textAlign: 'center',
-  },
-  analysisJustification: {
-    marginTop: 6,
-    fontSize: 15,
-    color: '#333',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  analysisInputLabel: {
-    marginTop: 10,
-    fontWeight: 'bold',
-    color: '#2a7',
-    textAlign: 'center',
-  },
-  analysisInput: {
-    marginTop: 2,
-    fontSize: 15,
-    color: '#333',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  resultContainer: {
-    marginTop: 24,
-  },
-  resultTitle: {
-    fontWeight: 'bold',
-    fontSize: 18,
-    marginBottom: 8,
-  },
-  levelContainer: {
-    marginBottom: 16,
-    padding: 16,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  level: {
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  sentence: {
-    marginTop: 4,
-    fontSize: 15,
-  },
-  explanation: {
-    marginTop: 4,
-    fontStyle: 'italic',
-    color: '#555',
-  },
-  selectedLevels: {
-    marginTop: 16,
-    fontSize: 16,
-    textAlign: 'center',
-    color: '#333',
-  },
-  settingsButton: {
-    position: 'absolute',
-    top: 40,
-    right: 16,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: 'transparent',
+  checkButtonDisabled: {
+    backgroundColor: '#A6C1EE',
+    shadowOpacity: 0,
     elevation: 0,
   },
-  settingsButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  checkButtonPressed: {
+    transform: [{ scale: 0.98 }],
   },
-  prettyButton: {
-    marginTop: 4,
-    marginBottom: 8,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2a7',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  prettyButtonText: {
+  checkButtonText: {
     color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 17,
+    fontSize: 18,
+    fontWeight: '700',
     letterSpacing: 0.5,
   },
-  placeholderCard: {
-    marginBottom: 16,
-    padding: 16,
-    backgroundColor: '#e0e0e0',
+  settingsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: '#E8ECEF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 12,
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+    marginBottom: 24,
+  },
+  settingsText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '600',
+  },
+  errorContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#FDEDEC',
+      padding: 16,
+      borderRadius: 16,
+      marginBottom: 24,
+  },
+  errorText: {
+      color: '#e74c3c',
+      marginLeft: 12,
+      flex: 1,
+  },
+  analysisCard: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 32,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-    minHeight: 80,
-    width: '100%',
+    shadowRadius: 16,
+    elevation: 6,
   },
-  placeholderBar: {
-    height: 14,
-    width: '80%',
-    backgroundColor: '#cccccc',
-    borderRadius: 7,
-    marginTop: 10,
+  analysisHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  placeholderBarShort: {
-    height: 14,
-    width: '40%',
-    backgroundColor: '#cccccc',
-    borderRadius: 7,
-    marginTop: 0,
+  analysisTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#11181C',
+  },
+  levelBadgeBig: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  levelBadgeTextBig: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 20,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F0F0F0',
+    marginBottom: 16,
+  },
+  analysisLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#666',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  analysisText: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 24,
+    marginBottom: 20,
+  },
+  dismissButton: {
+    alignSelf: 'center',
+    padding: 8,
+  },
+  dismissText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sectionHeader: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: '#11181C',
+      marginBottom: 16,
+      marginLeft: 4,
+  },
+  resultsList: {
+      marginBottom: 40,
+  },
+  resultCard: {
+      backgroundColor: '#fff',
+      borderRadius: 20,
+      marginBottom: 16,
+      overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2,
+  },
+  cardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f7f7f7',
+      borderLeftWidth: 6, 
+  },
+  miniBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      marginRight: 12,
+  },
+  miniBadgeText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: 12,
+  },
+  cardTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#11181C',
+  },
+  cardContent: {
+      padding: 16,
+  },
+  sentenceLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#999',
+      marginBottom: 4,
+  },
+  sentenceText: {
+      fontSize: 16,
+      color: '#333',
+      fontStyle: 'italic',
+      marginBottom: 16,
+  },
+  explanationBox: {
+      flexDirection: 'row',
+      backgroundColor: '#F0F7FF',
+      padding: 12,
+      borderRadius: 12,
+      gap: 10,
+  },
+  explanationText: {
+      fontSize: 14,
+      color: '#1976FF',
+      lineHeight: 20,
+      flex: 1,
+  },
+  loadingContainer: {
+      marginTop: 20,
+  },
+  skeletonCard: {
+      height: 120,
+      backgroundColor: '#E8ECEF',
+      borderRadius: 20,
+      marginBottom: 16,
   },
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 
@@ -26,25 +26,38 @@ export const InputCard: React.FC<InputCardProps> = ({
   sourceLang,
   handleTranslate,
 }) => (
-  <View style={{ backgroundColor: 'white', borderRadius: 20, marginHorizontal: 12, marginBottom: 16, padding: 16, minHeight: 180, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-      <Text style={{ fontWeight: '600', color: '#11181C', fontSize: 16 }}>{languages.find(l => l.code === sourceLang)?.name || 'Italian'}</Text>
-      <Ionicons name="arrow-down-circle-outline" size={18} color="#1976FF" style={{ marginLeft: 6 }} />
+  <View style={styles.cardContainer}>
+    <View style={styles.headerRow}>
+      <Text style={styles.langLabel}>
+        {languages.find(l => l.code === sourceLang)?.name || 'Detect Language'}
+      </Text>
+      {/* Optional: Add clear button if text exists */}
+      {draftInputText.length > 0 && (
+         <TouchableOpacity onPress={() => {
+            setDraftInputText('');
+            setInputText('');
+         }}>
+             <Ionicons name="close-circle" size={20} color="#ccc" />
+         </TouchableOpacity>
+      )}
     </View>
+
     <TextInput
-      style={{ fontSize: 24, color: '#11181C', minHeight: 60, marginBottom: 8, fontWeight: '400' }}
+      style={styles.textInput}
       value={draftInputText}
       onChangeText={setDraftInputText}
-      placeholder="Enter your text"
-      placeholderTextColor="#B0B0B0"
+      placeholder="Type or paste text..."
+      placeholderTextColor="#A0A0A0"
       multiline
+      textAlignVertical="top"
       returnKeyType="done"
       blurOnSubmit={true}
       onSubmitEditing={() => setInputText(draftInputText)}
       onFocus={() => setInputFocused(true)}
       onBlur={() => { setInputFocused(false); setInputText(draftInputText); }}
     />
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+
+    <View style={styles.toolbar}>
       <TouchableOpacity
         onPress={async () => {
           const text = await Clipboard.getStringAsync();
@@ -57,29 +70,92 @@ export const InputCard: React.FC<InputCardProps> = ({
           }
         }}
         disabled={!hasClipboardContent}
-        style={{
-          backgroundColor: hasClipboardContent ? '#E6F0FF' : '#F0F0F0',
-          borderRadius: 12,
-          paddingHorizontal: 14,
-          paddingVertical: 8,
-          alignSelf: 'center',
-          flexDirection: 'row',
-          alignItems: 'center',
-          marginBottom: 8,
-          opacity: hasClipboardContent ? 1 : 0.5,
-        }}
+        style={[styles.toolButton, !hasClipboardContent && styles.disabledTool]}
       >
-        <Ionicons name="clipboard-outline" size={18} color={hasClipboardContent ? '#1976FF' : '#B0B0B0'} style={{ marginRight: 6 }} />
-        <Text style={{ color: hasClipboardContent ? '#1976FF' : '#B0B0B0', fontWeight: '600', fontSize: 16 }}>Paste</Text>
+        <Ionicons name="clipboard-outline" size={20} color={hasClipboardContent ? '#1976FF' : '#B0B0B0'} />
+        <Text style={[styles.toolText, !hasClipboardContent && styles.disabledText]}>Paste</Text>
       </TouchableOpacity>
-      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-        <TouchableOpacity onPress={() => Alert.alert('Camera pressed')} style={{ backgroundColor: '#1976FF', borderRadius: 20, padding: 10, marginRight: 8, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="camera-outline" size={22} color="white" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => Alert.alert('Mic pressed')} style={{ backgroundColor: '#1976FF', borderRadius: 20, padding: 10, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="mic-outline" size={22} color="white" />
-        </TouchableOpacity>
+      
+      <View style={styles.toolGroup}>
+         <TouchableOpacity onPress={() => Alert.alert('Mic pressed')} style={styles.iconButton}>
+            <Ionicons name="mic-outline" size={22} color="#555" />
+         </TouchableOpacity>
+         <TouchableOpacity onPress={() => Alert.alert('Camera pressed')} style={styles.iconButton}>
+            <Ionicons name="camera-outline" size={22} color="#555" />
+         </TouchableOpacity>
       </View>
     </View>
   </View>
 );
+
+const styles = StyleSheet.create({
+  cardContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    minHeight: 180,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  langLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1976FF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  textInput: {
+    fontSize: 22,
+    color: '#333',
+    minHeight: 80,
+    marginBottom: 16,
+    fontWeight: '400',
+    lineHeight: 30,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 16,
+  },
+  toolButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F7FA',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  toolText: {
+    marginLeft: 6,
+    color: '#1976FF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  disabledTool: {
+    opacity: 0.6,
+  },
+  disabledText: {
+    color: '#B0B0B0',
+  },
+  toolGroup: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  iconButton: {
+    padding: 8,
+  },
+});

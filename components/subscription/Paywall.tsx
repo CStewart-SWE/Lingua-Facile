@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,213 +8,189 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { presentPaywall, restorePurchases } from '../../services/revenuecatService';
+import { getOfferings, purchasePackage, restorePurchases } from '../../services/revenuecatService';
+import { PurchasesPackage } from 'react-native-purchases';
 import { useSubscriptionStore } from '../../app/store/useSubscriptionStore';
 import { Ionicons } from '@expo/vector-icons';
 
 interface PaywallProps {
   visible: boolean;
   onClose: () => void;
-  feature?: string; // The feature user tried to access
+  feature?: string;
 }
 
 interface FeatureItem {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   description: string;
-  free: boolean;
-  premium: boolean;
 }
 
-const FEATURES: FeatureItem[] = [
+const PREMIUM_FEATURES: FeatureItem[] = [
   {
-    icon: 'language',
-    title: 'Translations',
-    description: '10/day vs Unlimited',
-    free: true,
-    premium: true,
-  },
-  {
-    icon: 'school',
-    title: 'CEFR Analysis',
-    description: '5/day vs Unlimited',
-    free: true,
-    premium: true,
-  },
-  {
-    icon: 'text',
-    title: 'Verb Conjugation',
-    description: '10/day vs Unlimited',
-    free: true,
-    premium: true,
-  },
-  {
-    icon: 'flash',
-    title: 'Smart Features',
-    description: 'Examples, Synonyms, Tone',
-    free: false,
-    premium: true,
+    icon: 'infinite',
+    title: 'Unlimited Access',
+    description: 'Unlimited translations and CEFR analysis',
   },
   {
     icon: 'chatbubbles',
-    title: 'AI Chat Tutor',
-    description: 'Practice conversations',
-    free: false,
-    premium: true,
+    title: 'AI Tutor',
+    description: 'Practice with an advanced AI language tutor',
   },
   {
-    icon: 'refresh',
-    title: 'Fresh Analysis',
-    description: 'Bypass cache for latest results',
-    free: false,
-    premium: true,
+    icon: 'sparkles',
+    title: 'Smart Insights',
+    description: 'Get tone, synonyms, and detailed context',
   },
   {
-    icon: 'cloud-upload',
-    title: 'Cloud Sync',
-    description: 'Sync settings across devices',
-    free: false,
-    premium: true,
+    icon: 'cloud-offline',
+    title: 'Ad-Free Experience',
+    description: 'Focus on learning without interruptions',
   },
 ];
 
 export const Paywall: React.FC<PaywallProps> = ({ visible, onClose, feature }) => {
   const [purchasing, setPurchasing] = useState(false);
-
-  const backgroundColor = useThemeColor({}, 'background');
-  const textColor = useThemeColor({}, 'text');
-  const tintColor = useThemeColor({}, 'tint');
-
+  const [pkg, setPkg] = useState<PurchasesPackage | null>(null);
+  const [loadingOfferings, setLoadingOfferings] = useState(true);
   const { isPremium } = useSubscriptionStore();
 
+  useEffect(() => {
+    const fetchOfferings = async () => {
+      if (!visible) return;
+      
+      setLoadingOfferings(true);
+      try {
+        const offerings = await getOfferings();
+        if (offerings?.current && offerings.current.availablePackages.length > 0) {
+          // Prefer monthly package, or fallback to first available
+          const monthly = offerings.current.monthly;
+          const available = monthly || offerings.current.availablePackages[0];
+          setPkg(available);
+        }
+      } catch (e) {
+        console.error('Error fetching offerings:', e);
+      } finally {
+        setLoadingOfferings(false);
+      }
+    };
+
+    fetchOfferings();
+  }, [visible]);
+
   const handlePurchase = async () => {
+    if (!pkg) return;
+    
     setPurchasing(true);
-    const result = await presentPaywall('premium');
-    if (result === 'purchased' || result === 'restored') {
-      Alert.alert('Success', 'Thank you for subscribing!', [{ text: 'OK', onPress: onClose }]);
-    } else if (result === 'error') {
-      Alert.alert('Purchase Failed', 'Unable to open the purchase screen. Please try again.');
+    try {
+      const customerInfo = await purchasePackage(pkg);
+      if (customerInfo?.entitlements.active.premium) {
+        Alert.alert('Welcome to Premium!', 'Thank you for upgrading.', [{ text: 'OK', onPress: onClose }]);
+      }
+    } catch (e: any) {
+      if (!e.userCancelled) {
+        Alert.alert('Purchase Error', e.message);
+      }
+    } finally {
+      setPurchasing(false);
     }
-    setPurchasing(false);
   };
 
   const handleRestore = async () => {
     setPurchasing(true);
     try {
       const customerInfo = await restorePurchases();
-      if (customerInfo) {
-        const hasActive = Object.keys(customerInfo.entitlements.active).length > 0;
-        if (hasActive) {
-          Alert.alert('Restored', 'Your subscription has been restored!', [{ text: 'OK', onPress: onClose }]);
-        } else {
-          Alert.alert('No Subscription', 'No active subscription found to restore.');
-        }
+      if (customerInfo?.entitlements.active.premium) {
+        Alert.alert('Restored', 'Your subscription has been restored!', [{ text: 'OK', onPress: onClose }]);
+      } else {
+        Alert.alert('No Subscription', 'No active subscription found.');
       }
-    } catch (error: any) {
-      Alert.alert('Restore Failed', error.message || 'An error occurred while restoring purchases.');
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setPurchasing(false);
     }
-    setPurchasing(false);
   };
 
-  // If already premium, don't show paywall
-  if (isPremium) {
-    return null;
-  }
+  if (isPremium) return null;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <View style={[styles.container, { backgroundColor }]}>
-        {/* Header */}
+      <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={28} color={textColor} />
+            <Ionicons name="close" size={24} color="#8E8E93" />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: textColor }]}>Upgrade to Premium</Text>
-          <View style={styles.placeholder} />
         </View>
 
-        {/* Feature the user tried to access */}
-        {feature && (
-          <View style={[styles.featurePrompt, { backgroundColor: tintColor + '20' }]}>
-            <Ionicons name="lock-closed" size={20} color={tintColor} />
-            <Text style={[styles.featurePromptText, { color: textColor }]}>
-              {feature} requires Premium
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.heroSection}>
+            <View style={styles.iconBadge}>
+              <Ionicons name="diamond" size={40} color="#1976FF" />
+            </View>
+            <Text style={styles.title}>Unlock Full Potential</Text>
+            <Text style={styles.subtitle}>
+              {feature 
+                ? `Upgrade to access ${feature} and more.` 
+                : 'Supercharge your language learning journey.'}
             </Text>
           </View>
-        )}
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Features comparison */}
-          <View style={styles.featuresSection}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>What's included</Text>
-
-            {FEATURES.map((item, index) => (
-              <View key={index} style={styles.featureRow}>
-                <View style={styles.featureInfo}>
-                  <Ionicons name={item.icon} size={24} color={tintColor} />
-                  <View style={styles.featureText}>
-                    <Text style={[styles.featureTitle, { color: textColor }]}>{item.title}</Text>
-                    <Text style={[styles.featureDescription, { color: textColor + '80' }]}>
-                      {item.description}
-                    </Text>
-                  </View>
+          <View style={styles.featuresList}>
+            {PREMIUM_FEATURES.map((item, index) => (
+              <View key={index} style={styles.featureItem}>
+                <View style={styles.featureIconBox}>
+                  <Ionicons name={item.icon} size={22} color="#1976FF" />
                 </View>
-                <View style={styles.featureChecks}>
-                  <Ionicons
-                    name={item.free ? 'checkmark-circle' : 'close-circle'}
-                    size={22}
-                    color={item.free ? '#4CAF50' : '#9E9E9E'}
-                  />
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={22}
-                    color="#4CAF50"
-                    style={styles.premiumCheck}
-                  />
+                <View style={styles.featureText}>
+                  <Text style={styles.featureTitle}>{item.title}</Text>
+                  <Text style={styles.featureDesc}>{item.description}</Text>
                 </View>
               </View>
             ))}
-
-            {/* Labels for columns */}
-            <View style={styles.columnLabels}>
-              <Text style={[styles.columnLabel, { color: textColor + '60' }]}>Free</Text>
-              <Text style={[styles.columnLabel, styles.premiumLabel, { color: tintColor }]}>
-                Premium
-              </Text>
-            </View>
-          </View>
-
-          {/* Packages */}
-          <View style={styles.packagesSection}>
-            <Text style={[styles.packagesNote, { color: textColor + '80' }]}>
-              Choose your plan on the next screen. You can cancel anytime.
-            </Text>
           </View>
         </ScrollView>
 
-        {/* Purchase button */}
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.purchaseButton, { backgroundColor: tintColor }]}
-            onPress={handlePurchase}
-            disabled={purchasing}
-          >
-            {purchasing ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.purchaseButtonText}>
-                Continue to Plans
+          {loadingOfferings ? (
+            <ActivityIndicator style={{ marginBottom: 20 }} color="#1976FF" />
+          ) : (
+            <>
+              <TouchableOpacity
+                style={[styles.ctaButton, (!pkg || purchasing) && { opacity: 0.7 }]}
+                onPress={handlePurchase}
+                disabled={!pkg || purchasing}
+              >
+                {purchasing ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.ctaText}>
+                    {pkg?.product.introPrice 
+                      ? 'Start Free Trial' 
+                      : `Subscribe for ${pkg?.product.priceString}`}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              
+              <Text style={styles.disclaimer}>
+                {pkg?.product.introPrice 
+                  ? `Then ${pkg.product.priceString}/month. Cancel anytime.`
+                  : 'Cancel anytime.'}
               </Text>
-            )}
-          </TouchableOpacity>
+            </>
+          )}
 
-          <TouchableOpacity style={styles.restoreButton} onPress={handleRestore} disabled={purchasing}>
-            <Text style={[styles.restoreButtonText, { color: tintColor }]}>
-              Restore Purchases
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.footerLinks}>
+            <TouchableOpacity onPress={handleRestore}>
+              <Text style={styles.linkText}>Restore Purchases</Text>
+            </TouchableOpacity>
+            <Text style={styles.dot}>•</Text>
+            <TouchableOpacity onPress={() => { /* Terms link */ }}>
+              <Text style={styles.linkText}>Terms</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -224,128 +200,120 @@ export const Paywall: React.FC<PaywallProps> = ({ visible, onClose, feature }) =
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    padding: 16,
+    alignItems: 'flex-end',
   },
   closeButton: {
     padding: 8,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  placeholder: {
-    width: 44,
-  },
-  featurePrompt: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  featurePromptText: {
-    fontSize: 14,
-    fontWeight: '500',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 20,
   },
   content: {
-    flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
   },
-  featuresSection: {
-    marginBottom: 24,
+  heroSection: {
+    alignItems: 'center',
+    marginBottom: 40,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
+  iconBadge: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E6F0FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
-  featureRow: {
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#000',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    lineHeight: 22,
+  },
+  featuresList: {
+    gap: 24,
+  },
+  featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E0E0E0',
   },
-  featureInfo: {
-    flexDirection: 'row',
+  featureIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#F5F7FA',
     alignItems: 'center',
-    flex: 1,
-    gap: 12,
+    justifyContent: 'center',
+    marginRight: 16,
   },
   featureText: {
     flex: 1,
   },
   featureTitle: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 4,
   },
-  featureDescription: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  featureChecks: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  premiumCheck: {
-    marginLeft: 8,
-  },
-  columnLabels: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingTop: 8,
-    paddingRight: 4,
-  },
-  columnLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    width: 38,
-    textAlign: 'center',
-  },
-  premiumLabel: {
-    marginLeft: 8,
-  },
-  packagesSection: {
-    marginBottom: 24,
-  },
-  packagesNote: {
+  featureDesc: {
     fontSize: 14,
+    color: '#666',
     lineHeight: 20,
   },
   footer: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
-    paddingTop: 16,
-    gap: 12,
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#F2F2F7',
+    backgroundColor: '#fff',
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },
-  purchaseButton: {
-    paddingVertical: 16,
-    borderRadius: 12,
+  ctaButton: {
+    backgroundColor: '#1976FF',
+    paddingVertical: 18,
+    borderRadius: 16,
     alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#1976FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  purchaseButtonText: {
+  ctaText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
   },
-  restoreButton: {
+  disclaimer: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#8E8E93',
+    marginBottom: 20,
+  },
+  footerLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 8,
+    gap: 8,
   },
-  restoreButtonText: {
-    fontSize: 14,
+  linkText: {
+    fontSize: 13,
+    color: '#8E8E93',
     fontWeight: '500',
   },
+  dot: {
+    color: '#C7C7CC',
+  },
 });
-
-export default Paywall;
