@@ -20,7 +20,8 @@ export const sendMessageToTutor = async (
     messages: ChatMessage[],
     targetLang: string,
     userLevel: string,
-    audioBase64?: string
+    audioBase64?: string,
+    sourceLang: string = 'en'
 ): Promise<ChatResponse> => {
 
     // Prepare payload
@@ -28,7 +29,8 @@ export const sendMessageToTutor = async (
         messages,
         target_lang: targetLang,
         user_level: userLevel,
-        audio_base64: audioBase64 || null
+        audio_base64: audioBase64 || null,
+        source_lang: sourceLang
     };
 
     const { data, error } = await supabase.functions.invoke('chat-tutor', {

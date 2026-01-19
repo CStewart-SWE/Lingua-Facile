@@ -16,14 +16,14 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, audio_base64, target_lang, user_level } = await req.json();
+    const { messages, audio_base64, target_lang, user_level, source_lang } = await req.json();
     const apiKey = Deno.env.get("OPENAI_API_KEY");
 
     if (!apiKey) {
       throw new Error("Missing OpenAI API Key");
     }
 
-    let userMessage = messages[messages.length - 1]?.content || "";
+    let userMessage = "";
     let wasAudio = false;
 
     // 1. Transcribe Audio if present
@@ -62,8 +62,8 @@ serve(async (req) => {
 
         userMessage = transcriptData.text;
 
-        // Update the last message content with the transcribed text so the history is correct
-        messages[messages.length - 1].content = userMessage;
+        // Append the new message to history
+        messages.push({ role: "user", content: userMessage });
 
       } catch (err) {
         console.error("Transcription failed", err);
@@ -72,12 +72,30 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
+    } else {
+      // Text mode: last message is the user input
+      userMessage = messages[messages.length - 1]?.content || "";
     }
 
     // 2. Chat Completion
+    const languageMap: { [key: string]: string } = {
+      'en': 'English',
+      'es': 'Spanish',
+      'fr': 'French',
+      'de': 'German',
+      'it': 'Italian',
+      'pt': 'Portuguese',
+      'ru': 'Russian',
+      'ja': 'Japanese',
+      'ko': 'Korean',
+      'zh': 'Chinese'
+    };
+    const sourceLangName = languageMap[source_lang] || "English";
+
     const systemPrompt = `
 You are a friendly, encouraging language tutor helping a user learn ${target_lang || "a foreign language"}.
 The user's level is roughly ${user_level || "intermediate"}.
+The user's native/source language is ${sourceLangName}.
 
 Your Goal:
 1. Respond naturally to the user's message in ${target_lang || "the target language"}. Keep it conversational and brief (1-3 sentences).
@@ -92,7 +110,7 @@ Return ONLY a valid JSON object with this structure:
   "correction": {
      "original": "The user's text part that was wrong",
      "corrected": "The corrected version",
-     "explanation": "Brief explanation of why"
+     "explanation": "Brief explanation of why (IN ${sourceLangName} - EXTREMELY IMPORTANT)"
   } | null
 }
 

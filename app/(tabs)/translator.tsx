@@ -1,47 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import { DeepLTranslationError, translateWithDeepL } from '@/services/deeplService';
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import { MotiView } from 'moti';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  Alert,
   ScrollView,
   StyleSheet,
-  Alert,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { translateWithDeepL, DeepLTranslationError } from '@/services/deeplService';
-import * as Clipboard from 'expo-clipboard';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MotiView } from 'moti';
 import { InputCard } from '../../components/translator/InputCard';
 import { LanguageSelector } from '../../components/translator/LanguageSelector';
 import { TranslationCard } from '../../components/translator/TranslationCard';
+import { useLanguageStore } from '../store/useLanguageStore';
 
 // Usage tracking imports
-import { supabase } from '../../utils/supabase';
+import { fetchTranslationFeatures } from '@/services/translatorFeatures';
+import { Paywall } from '../../components/subscription/Paywall';
+import { UsageWarningBanner } from '../../components/subscription/UsageQuotaDisplay';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { checkAndLogUsage, UsageLimitExceededError } from '../../services/usageService';
-import { UsageWarningBanner } from '../../components/subscription/UsageQuotaDisplay';
-import { Paywall } from '../../components/subscription/Paywall';
-import { fetchTranslationFeatures } from '@/services/translatorFeatures';
+import { supabase } from '../../utils/supabase';
 
 export default function TranslatorScreen() {
   const [inputText, setInputText] = useState('');
   const [draftInputText, setDraftInputText] = useState('');
   const [translatedText, setTranslatedText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [sourceLang, setSourceLang] = useState<string | null>(null);
-  const [targetLang, setTargetLang] = useState<string | null>(null);
+  const { sourceLang, targetLang, setSourceLang, setTargetLang } = useLanguageStore();
   const [error, setError] = useState<string | null>(null);
   const [copiedInput, setCopiedInput] = useState(false);
   const [copiedOutput, setCopiedOutput] = useState(false);
-  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  // prefsLoaded removed
   const [hasClipboardContent, setHasClipboardContent] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [activeTab, setActiveTab] = useState<'examples' | 'synonyms' | 'tone'>('examples');
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
   const [languageModalType, setLanguageModalType] = useState<'source' | 'target' | null>(null);
-  
+
   const [features, setFeatures] = useState<{
     examples?: any[];
     synonyms?: any[];
@@ -67,29 +66,8 @@ export default function TranslatorScreen() {
     { code: 'zh', name: 'Chinese' },
   ];
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const savedSource = await AsyncStorage.getItem('translator_sourceLang');
-        const savedTarget = await AsyncStorage.getItem('translator_targetLang');
-        setSourceLang(savedSource || 'en');
-        setTargetLang(savedTarget || 'it');
-      } catch (e) {
-        setSourceLang('en');
-        setTargetLang('it');
-      } finally {
-        setPrefsLoaded(true);
-      }
-    })();
-  }, []);
+  // Preferences handled by useLanguageStore logic
 
-  useEffect(() => {
-    if (prefsLoaded && sourceLang) AsyncStorage.setItem('translator_sourceLang', sourceLang);
-  }, [sourceLang, prefsLoaded]);
-
-  useEffect(() => {
-    if (prefsLoaded && targetLang) AsyncStorage.setItem('translator_targetLang', targetLang);
-  }, [targetLang, prefsLoaded]);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -139,17 +117,17 @@ export default function TranslatorScreen() {
       setIsLoading(false);
 
       try {
-          const featureData = await fetchTranslationFeatures(
-            result.translatedText, 
-            sourceLang, 
-            targetLang,
-            isPremium
-          );
-          setFeatures(featureData);
+        const featureData = await fetchTranslationFeatures(
+          result.translatedText,
+          sourceLang,
+          targetLang,
+          isPremium
+        );
+        setFeatures(featureData);
       } catch (err) {
-          console.error("Failed to load features", err);
+        console.error("Failed to load features", err);
       } finally {
-          setFeaturesLoading(false);
+        setFeaturesLoading(false);
       }
 
     } catch (error) {
@@ -173,8 +151,11 @@ export default function TranslatorScreen() {
   };
 
   const swapLanguages = () => {
+    // Swap store languages
+    const oldSource = sourceLang;
     setSourceLang(targetLang);
-    setTargetLang(sourceLang);
+    setTargetLang(oldSource);
+
     setInputText(translatedText);
     setDraftInputText(translatedText);
     setTranslatedText(inputText);
@@ -217,165 +198,165 @@ export default function TranslatorScreen() {
   const scrollRef = React.useRef<ScrollView>(null);
 
   return (
-      <View style={styles.mainContainer}>
-        <Paywall
-          visible={paywallVisible}
-          onClose={() => setPaywallVisible(false)}
-          feature="Translations"
+    <View style={styles.mainContainer}>
+      <Paywall
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        feature="Translations"
+      />
+
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {!isPremium && (
+          <UsageWarningBanner
+            actionType="translation"
+            onUpgradePress={() => setPaywallVisible(true)}
+          />
+        )}
+
+        <LanguageSelector
+          sourceLang={sourceLang}
+          targetLang={targetLang}
+          languages={languages}
+          openLanguageModal={openLanguageModal}
+          openLanguageModalSwap={swapLanguages}
+          languageModalVisible={languageModalVisible}
+          languageModalType={languageModalType}
+          closeLanguageModal={closeLanguageModal}
+          selectLanguage={selectLanguage}
         />
 
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {!isPremium && (
-            <UsageWarningBanner
-              actionType="translation"
-              onUpgradePress={() => setPaywallVisible(true)}
-            />
-          )}
+        <InputCard
+          draftInputText={draftInputText}
+          setDraftInputText={setDraftInputText}
+          inputFocused={inputFocused}
+          setInputFocused={setInputFocused}
+          setInputText={setInputText}
+          hasClipboardContent={hasClipboardContent}
+          languages={languages}
+          sourceLang={sourceLang}
+          handleTranslate={handleTranslate}
+        />
 
-          <LanguageSelector
-            sourceLang={sourceLang}
+        {(isLoading || translatedText !== '') && (
+          <TranslationCard
+            isLoading={isLoading}
+            featuresLoading={featuresLoading}
+            translatedText={translatedText}
+            copiedOutput={copiedOutput}
+            setCopiedOutput={setCopiedOutput}
             targetLang={targetLang}
             languages={languages}
-            openLanguageModal={openLanguageModal}
-            openLanguageModalSwap={swapLanguages}
-            languageModalVisible={languageModalVisible}
-            languageModalType={languageModalType}
-            closeLanguageModal={closeLanguageModal}
-            selectLanguage={selectLanguage}
+            handleNewTranslation={handleNewTranslation}
+            pronunciation={features.pronunciation}
+            meaning={features.meaning}
           />
+        )}
 
-          <InputCard
-            draftInputText={draftInputText}
-            setDraftInputText={setDraftInputText}
-            inputFocused={inputFocused}
-            setInputFocused={setInputFocused}
-            setInputText={setInputText}
-            hasClipboardContent={hasClipboardContent}
-            languages={languages}
-            sourceLang={sourceLang}
-            handleTranslate={handleTranslate}
-          />
-
-          {(isLoading || translatedText !== '') && (
-            <TranslationCard
-              isLoading={isLoading}
-              featuresLoading={featuresLoading}
-              translatedText={translatedText}
-              copiedOutput={copiedOutput}
-              setCopiedOutput={setCopiedOutput}
-              targetLang={targetLang}
-              languages={languages}
-              handleNewTranslation={handleNewTranslation}
-              pronunciation={features.pronunciation}
-              meaning={features.meaning}
-            />
-          )}
-
-          <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)}>
+        <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)}>
           {translatedText !== '' && (
             <View style={styles.detailsContainer}>
               <View style={styles.tabsContainer}>
-                 {(['examples', 'synonyms', 'tone'] as const).map((tab) => (
-                    <TouchableOpacity
-                       key={tab}
-                       onPress={() => setActiveTab(tab)}
-                       style={[
-                          styles.tabButton,
-                          activeTab === tab && styles.tabButtonActive
-                       ]}
-                    >
-                       <Text style={[
-                          styles.tabText,
-                          activeTab === tab && styles.tabTextActive
-                       ]}>
-                          {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                       </Text>
-                    </TouchableOpacity>
-                 ))}
+                {(['examples', 'synonyms', 'tone'] as const).map((tab) => (
+                  <TouchableOpacity
+                    key={tab}
+                    onPress={() => setActiveTab(tab)}
+                    style={[
+                      styles.tabButton,
+                      activeTab === tab && styles.tabButtonActive
+                    ]}
+                  >
+                    <Text style={[
+                      styles.tabText,
+                      activeTab === tab && styles.tabTextActive
+                    ]}>
+                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
               <View style={styles.tabContent}>
-                  {!isPremium ? (
-                    <View style={styles.premiumOverlay}>
-                      <View style={styles.lockIconContainer}>
-                        <Ionicons name="lock-closed" size={24} color="#1976FF" />
-                      </View>
-                      <Text style={styles.premiumTitle}>Unlock Smart Features</Text>
-                      <Text style={styles.premiumDesc}>
-                        Get instant examples, synonyms, and tone variations for every translation.
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => setPaywallVisible(true)}
-                        style={styles.upgradeButton}
-                      >
-                        <Text style={styles.upgradeText}>Upgrade to Premium</Text>
-                      </TouchableOpacity>
+                {!isPremium ? (
+                  <View style={styles.premiumOverlay}>
+                    <View style={styles.lockIconContainer}>
+                      <Ionicons name="lock-closed" size={24} color="#1976FF" />
                     </View>
-                  ) : featuresLoading ? (
-                    <View style={styles.skeletonContainer}>
-                      {[...Array(3)].map((_, idx) => (
-                        <MotiView
-                          key={idx}
-                          from={{ opacity: 0.4 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ loop: true, type: 'timing', duration: 900, delay: idx * 120, repeatReverse: true }}
-                          style={[styles.skeletonLine, { width: idx === 0 ? '90%' : idx === 1 ? '70%' : '50%' }]}
-                        />
-                      ))}
-                    </View>
-                  ) : (
-                    <>
-                      {activeTab === 'examples' && (
-                        features.examples?.length ? features.examples.map((item, i) => (
-                           <View key={i} style={styles.listItem}>
-                             <Text style={styles.listTitle}>{item.target}</Text>
-                             <Text style={styles.listSubtitle}>{item.source}</Text>
-                           </View>
-                        )) : <Text style={styles.emptyText}>No examples available.</Text>
-                      )}
+                    <Text style={styles.premiumTitle}>Unlock Smart Features</Text>
+                    <Text style={styles.premiumDesc}>
+                      Get instant examples, synonyms, and tone variations for every translation.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setPaywallVisible(true)}
+                      style={styles.upgradeButton}
+                    >
+                      <Text style={styles.upgradeText}>Upgrade to Premium</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : featuresLoading ? (
+                  <View style={styles.skeletonContainer}>
+                    {[...Array(3)].map((_, idx) => (
+                      <MotiView
+                        key={idx}
+                        from={{ opacity: 0.4 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ loop: true, type: 'timing', duration: 900, delay: idx * 120, repeatReverse: true }}
+                        style={[styles.skeletonLine, { width: idx === 0 ? '90%' : idx === 1 ? '70%' : '50%' }]}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <>
+                    {activeTab === 'examples' && (
+                      features.examples?.length ? features.examples.map((item, i) => (
+                        <View key={i} style={styles.listItem}>
+                          <Text style={styles.listTitle}>{item.target}</Text>
+                          <Text style={styles.listSubtitle}>{item.source}</Text>
+                        </View>
+                      )) : <Text style={styles.emptyText}>No examples available.</Text>
+                    )}
 
-                      {activeTab === 'synonyms' && (
-                        features.synonyms?.length ? features.synonyms.map((item, i) => (
-                          <View key={i} style={styles.listItem}>
-                            <Text style={styles.listTitle}>{item.word}</Text>
-                            <Text style={[styles.listSubtitle, { fontStyle: 'italic' }]}>{item.nuance}</Text>
-                          </View>
-                        )) : <Text style={styles.emptyText}>No synonyms available.</Text>
-                      )}
+                    {activeTab === 'synonyms' && (
+                      features.synonyms?.length ? features.synonyms.map((item, i) => (
+                        <View key={i} style={styles.listItem}>
+                          <Text style={styles.listTitle}>{item.word}</Text>
+                          <Text style={[styles.listSubtitle, { fontStyle: 'italic' }]}>{item.nuance}</Text>
+                        </View>
+                      )) : <Text style={styles.emptyText}>No synonyms available.</Text>
+                    )}
 
-                      {activeTab === 'tone' && (
-                        features.tone?.length ? features.tone.map((item, i) => (
-                          <View key={i} style={styles.listItem}>
-                            <View style={styles.toneBadge}>
-                                <Text style={styles.toneText}>{item.tone.toUpperCase()}</Text>
-                            </View>
-                            <Text style={styles.listTitle}>{item.text}</Text>
-                            <Text style={styles.listSubtitle}>{item.context}</Text>
+                    {activeTab === 'tone' && (
+                      features.tone?.length ? features.tone.map((item, i) => (
+                        <View key={i} style={styles.listItem}>
+                          <View style={styles.toneBadge}>
+                            <Text style={styles.toneText}>{item.tone.toUpperCase()}</Text>
                           </View>
-                        )) : <Text style={styles.emptyText}>No tone variations available.</Text>
-                      )}
-                    </>
-                  )}
+                          <Text style={styles.listTitle}>{item.text}</Text>
+                          <Text style={styles.listSubtitle}>{item.context}</Text>
+                        </View>
+                      )) : <Text style={styles.emptyText}>No tone variations available.</Text>
+                    )}
+                  </>
+                )}
               </View>
             </View>
           )}
-          </Animated.View>
-        </ScrollView>
-        
-        {translatedText !== '' && (
-          <TouchableOpacity
-            onPress={handleNewTranslation}
-            style={styles.floatingButton}
-          >
-            <Ionicons name="trash-outline" size={24} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </View>
+        </Animated.View>
+      </ScrollView>
+
+      {translatedText !== '' && (
+        <TouchableOpacity
+          onPress={handleNewTranslation}
+          style={styles.floatingButton}
+        >
+          <Ionicons name="trash-outline" size={24} color="#fff" />
+        </TouchableOpacity>
+      )}
+    </View>
   );
 }
 

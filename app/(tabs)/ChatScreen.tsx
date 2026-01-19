@@ -1,7 +1,6 @@
 
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Speech from 'expo-speech';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -9,14 +8,16 @@ import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Paywall } from '../../components/subscription/Paywall';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
+import { useLanguageStore } from '../store/useLanguageStore';
 
+import { ChatLanguageSettings } from '@/components/chat/ChatLanguageSettings';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { ChatMessage, sendMessageToTutor } from '../../services/chatService';
 
 export default function ChatScreen() {
   const [paywallVisible, setPaywallVisible] = useState(false);
   const { hasFeature, isPremium, isLoading: isFeatureLoading } = useFeatureAccess();
-  const { bottom } = useSafeAreaInsets();
+  const { bottom, top } = useSafeAreaInsets();
 
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
@@ -28,8 +29,10 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [targetLang, setTargetLang] = useState('es');
+  const { sourceLang, targetLang, setSourceLang, setTargetLang, swapLanguages } = useLanguageStore();
   const [userLevel, setUserLevel] = useState('intermediate');
+  const [langModalVisible, setLangModalVisible] = useState(false);
+
 
   // Audio State
   const { startRecording, stopRecording, isRecording } = useAudioRecorder();
@@ -52,13 +55,17 @@ export default function ChatScreen() {
     };
   }, []);
 
-  // Load Preferences
+  // Removed manual AsyncStorage sync - handled by store persistence
+
+
+  // Scroll to bottom when keyboard opens
   useEffect(() => {
-    (async () => {
-      const savedLang = await AsyncStorage.getItem('translator_targetLang');
-      if (savedLang) setTargetLang(savedLang);
-    })();
-  }, []);
+    if (keyboardHeight > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 50);
+    }
+  }, [keyboardHeight]);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -98,7 +105,7 @@ export default function ChatScreen() {
     setIsSending(true);
 
     try {
-      const response = await sendMessageToTutor(updatedMessages, targetLang, userLevel);
+      const response = await sendMessageToTutor(updatedMessages, targetLang, userLevel, undefined, sourceLang);
 
       const aiMsg: ChatMessage = { role: 'assistant', content: response.reply };
       const finalMessages = [...updatedMessages, aiMsg];
@@ -126,36 +133,45 @@ export default function ChatScreen() {
   const handleMicPress = async () => {
     console.log('Mic pressed, isRecording:', isRecording);
     if (isRecording) {
-      const result = await stopRecording();
-      console.log('Recording result:', result);
-      if (result && result.base64) {
-        // Send audio to backend
-        const newUserMsg: ChatMessage = { role: 'user', content: '🎤 Voice message...' };
-        const updatedMessages = [...messages, newUserMsg];
-        setMessages(updatedMessages);
-        setIsSending(true);
-        try {
-          const response = await sendMessageToTutor(updatedMessages, targetLang, userLevel, result.base64);
+      setIsSending(true); // Show loading state
+      try {
+        const result = await stopRecording();
+        console.log('Recording result:', result);
+
+        if (result && result.base64) {
+          // Send audio to backend
+          const response = await sendMessageToTutor(messages, targetLang, userLevel, result.base64, sourceLang);
           console.log('Response from tutor:', response);
+
+          const newMessages: ChatMessage[] = [];
+
+          // 1. Add User Transcript
           if (response.user_transcript) {
-            updatedMessages[updatedMessages.length - 1].content = response.user_transcript;
-            setMessages([...updatedMessages]);
+            newMessages.push({ role: 'user', content: response.user_transcript });
+          } else {
+            newMessages.push({ role: 'user', content: "🎤 Voice message" });
           }
-          const aiMsg: ChatMessage = { role: 'assistant', content: response.reply };
-          setMessages(prev => [...prev, aiMsg]);
+
+          // 2. Add AI Reply
+          newMessages.push({ role: 'assistant', content: response.reply });
+
+          setMessages(prev => [...prev, ...newMessages]);
+
+          Speech.stop();
           Speech.speak(response.reply, { language: targetLang });
+
           if (response.correction) {
             const correctionMsg: ChatMessage = { role: 'system', content: JSON.stringify(response.correction) };
             setMessages(prev => [...prev, correctionMsg]);
           }
-        } catch (err) {
-          console.error('Voice message error:', err);
-          Alert.alert('Error', 'Failed to process voice message: ' + (err as Error).message);
-        } finally {
-          setIsSending(false);
+        } else {
+          Alert.alert('Recording Error', 'No audio data captured. Please try again.');
         }
-      } else {
-        Alert.alert('Recording Error', 'No audio data captured. Please try again.');
+      } catch (err) {
+        console.error('Voice message error:', err);
+        Alert.alert('Error', 'Failed to process voice message: ' + (err as Error).message);
+      } finally {
+        setIsSending(false);
       }
     } else {
       await startRecording();
@@ -206,14 +222,39 @@ export default function ChatScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor }]}>
+
+
+
+      <ChatLanguageSettings
+        visible={langModalVisible}
+        onClose={() => setLangModalVisible(false)}
+        sourceLang={sourceLang}
+        targetLang={targetLang}
+        setSourceLang={setSourceLang}
+        setTargetLang={setTargetLang}
+        languages={[
+          { code: 'en', name: 'English' },
+          { code: 'es', name: 'Spanish' },
+          { code: 'fr', name: 'French' },
+          { code: 'de', name: 'German' },
+          { code: 'it', name: 'Italian' },
+          { code: 'pt', name: 'Portuguese' },
+          { code: 'ru', name: 'Russian' },
+          { code: 'ja', name: 'Japanese' },
+          { code: 'ko', name: 'Korean' },
+          { code: 'zh', name: 'Chinese' },
+        ]}
+      />
+
       <FlatList
         ref={flatListRef}
         data={messages}
         renderItem={renderItem}
         keyExtractor={(_, i) => i.toString()}
         style={styles.flatList}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 100 + keyboardHeight }]}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="chatbubbles-outline" size={80} color={tintColor + '40'} />
@@ -221,6 +262,14 @@ export default function ChatScreen() {
               Start a conversation! Type a message below.
             </Text>
           </View>
+        }
+        ListFooterComponent={
+          isSending ? (
+            <Animated.View entering={FadeIn} style={[styles.bubble, { backgroundColor: '#E6F0FF', alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+              <ActivityIndicator size="small" color={tintColor} />
+              <Text style={{ color: textColor, fontStyle: 'italic', fontSize: 14 }}>Thinking...</Text>
+            </Animated.View>
+          ) : null
         }
       />
 
@@ -233,6 +282,22 @@ export default function ChatScreen() {
           onChangeText={setInputText}
           multiline
         />
+
+        <TouchableOpacity
+          onPress={() => setLangModalVisible(true)}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: tintColor + '10',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ fontWeight: '900', color: tintColor, fontSize: 13 }}>
+            {targetLang.toUpperCase()}
+          </Text>
+        </TouchableOpacity>
 
         {inputText.length > 0 ? (
           <TouchableOpacity onPress={handleSend} disabled={isSending} style={[styles.sendButton, { backgroundColor: tintColor }]}>
@@ -250,7 +315,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
         )}
       </View>
-    </View>
+    </View >
   );
 }
 
@@ -338,5 +403,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     maxWidth: '70%',
+  },
+  header: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 10,
+  },
+  langButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  langButtonText: {
+    fontSize: 12,
+    fontWeight: 'bold',
   }
 });
