@@ -38,6 +38,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Linqua Facile to access your microphone for voice chat."
+        }
       ]
     ],
     "experiments": {

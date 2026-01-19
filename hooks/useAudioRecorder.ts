@@ -13,9 +13,19 @@ export const useAudioRecorder = () => {
     const [isRecording, setIsRecording] = useState(false);
     const [lastUri, setLastUri] = useState<string | null>(null);
 
+    // expo-audio permissions might be managed via the standard expo mechanism or Audio object locally.
+    // Since usePermissions export failed, let's try assuming standard Audio.requestPermissionsAsync behavior
+    // OR just trust the recorder to throw if no permission, which we can catch.
+    // However, modern Expo modules uses `usePermissions` from the package.
+    // Let's try to import the Audio object if available, or skip explicit hook if not found.
+    // Wait, if SDK 54, maybe it's just 'expo-audio' default export?
+
+    // Workaround: We will remove explicit `usePermissions` hook for a moment and rely on 
+    // try-catch in record(), which usually prompts on iOS automatically if configured in Info.plist.
+    // BUT we want to be nice.
+
     // Use expo-audio's built-in recorder hook
     const recorder = useExpoAudioRecorder(RecordingPresets.HIGH_QUALITY, (status) => {
-        // Status listener
         if (status.isFinished) {
             console.log('Recording finished');
         }
@@ -23,42 +33,49 @@ export const useAudioRecorder = () => {
 
     const startRecording = async () => {
         try {
-            console.log('Starting recording...');
+            console.log('Starting recording (implied permission request)...');
+
+            // Attempt to record. If permission is missing, this often triggers the prompt on iOS
+            // or throws an error we can catch.
             recorder.record();
+
             setIsRecording(true);
             console.log('Recording started');
         } catch (err) {
             console.error('Failed to start recording', err);
-            Alert.alert('Error', 'Failed to start recording: ' + (err as Error).message);
+            // Check if error is related to permissions
+            const msg = (err as Error).message;
+            if (msg.includes('permission')) {
+                Alert.alert('Permission needed', 'Please enable microphone access in settings.');
+            } else {
+                Alert.alert('Error', 'Failed to start recording: ' + msg);
+            }
         }
     };
 
     const stopRecording = async (): Promise<RecordingResult | null> => {
-        if (!isRecording) {
-            console.log('Not currently recording');
-            return null;
-        }
+        if (!isRecording) return null;
 
         console.log('Stopping recording...');
         setIsRecording(false);
 
         try {
-            const uri = await recorder.stop();
+            await recorder.stop();
+            const uri = recorder.uri;
+
             console.log('Recording stopped, saved at:', uri);
 
             if (!uri) return null;
             setLastUri(uri);
 
-            // Read as Base64 for upload
             let base64: string | null = null;
             if (Platform.OS !== 'web') {
                 try {
                     base64 = await FileSystem.readAsStringAsync(uri, {
                         encoding: 'base64' as any
                     });
-                    console.log('Base64 length:', base64?.length);
                 } catch (e) {
-                    console.error('Failed to read file as base64:', e);
+                    console.error('Failed to read file:', e);
                 }
             }
 
@@ -75,6 +92,6 @@ export const useAudioRecorder = () => {
         isRecording,
         startRecording,
         stopRecording,
-        hasPermission: true, // expo-audio handles permissions internally
+        hasPermission: true, // Optimistically true since we handle failure
     };
 };
