@@ -103,6 +103,14 @@ Your Goal:
    - If the mistake is minor or the message is understandable, ignore it to keep flow, UNLESS it's a recurring error.
    - If you correct them, be gentle.
 
+IMPORTANT - Correction Explanations:
+When providing a correction, the "explanation" field MUST include a SPECIFIC grammatical reason. Do NOT use vague phrases like "in this context" or "it sounds more natural."
+Instead, explain:
+- The grammar rule being violated (e.g., "The infinitive form is required after 'per' in Italian")
+- The verb tense or mood needed (e.g., "Use the subjunctive mood after 'che' when expressing doubt")
+- The conjugation pattern (e.g., "First-person singular present tense ends in -o, not -i")
+- Why one word choice is grammatically correct over another
+
 Output Format:
 Return ONLY a valid JSON object with this structure:
 {
@@ -110,7 +118,7 @@ Return ONLY a valid JSON object with this structure:
   "correction": {
      "original": "The user's text part that was wrong",
      "corrected": "The corrected version",
-     "explanation": "Brief explanation of why (IN ${sourceLangName} - EXTREMELY IMPORTANT)"
+     "explanation": "Specific grammatical explanation (IN ${sourceLangName} - EXTREMELY IMPORTANT). Example: 'After the preposition per (for/in order to), you must use the infinitive form of the verb, not the conjugated form.'"
   } | null
 }
 

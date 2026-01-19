@@ -3,7 +3,7 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Paywall } from '../../components/subscription/Paywall';
@@ -11,6 +11,7 @@ import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { useLanguageStore } from '../store/useLanguageStore';
 
 import { ChatLanguageSettings } from '@/components/chat/ChatLanguageSettings';
+import { translateWithDeepL } from '@/services/deeplService';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { ChatMessage, sendMessageToTutor } from '../../services/chatService';
 
@@ -230,25 +231,106 @@ export default function ChatScreen() {
       );
     }
 
+    // Handle translation on tap
+    const handleTranslate = async (messageIndex: number) => {
+      const originalIndex = messages.length - 1 - messageIndex;
+      const msg = messages[originalIndex];
+
+      if (msg.role !== 'assistant' || msg.isTranslating) return;
+
+      // If already has cached translation, toggle visibility
+      if (msg.cachedTranslation) {
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[originalIndex] = {
+            ...updated[originalIndex],
+            translation: msg.translation ? undefined : msg.cachedTranslation
+          };
+          return updated;
+        });
+        return;
+      }
+
+      // Set translating state
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[originalIndex] = { ...updated[originalIndex], isTranslating: true };
+        return updated;
+      });
+
+      try {
+        const result = await translateWithDeepL({
+          text: msg.content,
+          sourceLanguage: targetLang,
+          targetLanguage: sourceLang,
+        });
+
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[originalIndex] = {
+            ...updated[originalIndex],
+            translation: result.translatedText,
+            cachedTranslation: result.translatedText,
+            isTranslating: false
+          };
+          return updated;
+        });
+      } catch (err) {
+        console.error('Translation error:', err);
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[originalIndex] = { ...updated[originalIndex], isTranslating: false };
+          return updated;
+        });
+      }
+    };
+
     return (
-      <Animated.View
-        layout={Layout.springify()}
-        entering={FadeIn.duration(300)}
-        style={[
-          styles.bubble,
-          isUser ? { backgroundColor: userBubbleColor, alignSelf: 'flex-end' }
-            : { backgroundColor: aiBubbleColor, alignSelf: 'flex-start' }
-        ]}
-      >
-        <Text style={[styles.messageText, { color: isUser ? '#fff' : textColor }]}>{item.content}</Text>
-        {!isUser && (
-          <TouchableOpacity onPress={() => Speech.speak(item.content, { language: targetLang })} style={styles.speakIcon}>
-            <Ionicons name="volume-high" size={18} color={textColor + '80'} />
-          </TouchableOpacity>
-        )}
-      </Animated.View>
+      <Pressable onPress={() => !isUser && handleTranslate(index)}>
+        <Animated.View
+          layout={Layout.springify()}
+          entering={FadeIn.duration(300)}
+          style={[
+            styles.bubble,
+            isUser ? { backgroundColor: userBubbleColor, alignSelf: 'flex-end' }
+              : { backgroundColor: aiBubbleColor, alignSelf: 'flex-start' }
+          ]}
+        >
+          <Text style={[styles.messageText, { color: isUser ? '#fff' : textColor }]}>{item.content}</Text>
+
+
+
+          {!isUser && item.translation && (
+            <View style={styles.translationContainer}>
+              <Text style={[styles.translationText, { color: textColor + '80' }]}>{item.translation}</Text>
+            </View>
+          )}
+
+          {/* Bottom row with speaker and translate hint */}
+          {!isUser && (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); Speech.speak(item.content, { language: targetLang }); }}
+              >
+                <Ionicons name="volume-high" size={18} color={textColor + '80'} />
+              </TouchableOpacity>
+
+              {item.isTranslating ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <ActivityIndicator size="small" color={tintColor} />
+                  <Text style={{ color: textColor + '60', fontSize: 11, fontStyle: 'italic' }}>Translating...</Text>
+                </View>
+              ) : (
+                <Text style={{ color: textColor + '40', fontSize: 11 }}>
+                  {item.translation ? 'Tap to hide' : 'Tap to translate'}
+                </Text>
+              )}
+            </View>
+          )}
+        </Animated.View>
+      </Pressable>
     );
-  }, [targetLang, textColor, tintColor, userBubbleColor, aiBubbleColor]);
+  }, [messages, targetLang, sourceLang, textColor, tintColor, userBubbleColor, aiBubbleColor]);
 
   return (
     <KeyboardAvoidingView
@@ -373,6 +455,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   messageText: { fontSize: 16, lineHeight: 22 },
+  translationContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  translationText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    lineHeight: 20,
+  },
   speakIcon: { marginTop: 8, alignSelf: 'flex-start' },
 
   correctionContainer: {

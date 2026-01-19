@@ -6,6 +6,9 @@ export interface ChatMessage {
     content: string;
     isVoice?: boolean;
     isTranscribing?: boolean;
+    translation?: string;
+    cachedTranslation?: string;
+    isTranslating?: boolean;
 }
 
 export interface ChatResponse {
