@@ -2,7 +2,7 @@
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -119,7 +119,16 @@ export default function ChatScreen() {
   const handleMicPress = async () => {
     console.log('Mic pressed, isRecording:', isRecording);
     if (isRecording) {
-      setIsSending(true); // Show loading state
+      // Add voice message placeholder immediately
+      const voiceMsg: ChatMessage = {
+        role: 'user',
+        content: '',
+        isVoice: true,
+        isTranscribing: true
+      };
+      setMessages(prev => [...prev, voiceMsg]);
+      setIsSending(true);
+
       try {
         const result = await stopRecording();
         console.log('Recording result:', result);
@@ -129,19 +138,23 @@ export default function ChatScreen() {
           const response = await sendMessageToTutor(messages, targetLang, userLevel, result.base64, sourceLang);
           console.log('Response from tutor:', response);
 
-          const newMessages: ChatMessage[] = [];
+          // Update the voice message with transcription
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+            if (updated[lastIndex]?.isVoice) {
+              updated[lastIndex] = {
+                ...updated[lastIndex],
+                content: response.user_transcript || '🎤 Voice message',
+                isTranscribing: false
+              };
+            }
+            return updated;
+          });
 
-          // 1. Add User Transcript
-          if (response.user_transcript) {
-            newMessages.push({ role: 'user', content: response.user_transcript });
-          } else {
-            newMessages.push({ role: 'user', content: "🎤 Voice message" });
-          }
-
-          // 2. Add AI Reply
-          newMessages.push({ role: 'assistant', content: response.reply });
-
-          setMessages(prev => [...prev, ...newMessages]);
+          // Add AI response
+          const aiMsg: ChatMessage = { role: 'assistant', content: response.reply };
+          setMessages(prev => [...prev, aiMsg]);
 
           Speech.stop();
           Speech.speak(response.reply, { language: targetLang });
@@ -151,10 +164,14 @@ export default function ChatScreen() {
             setMessages(prev => [...prev, correctionMsg]);
           }
         } else {
+          // Remove the placeholder on error
+          setMessages(prev => prev.filter(m => !m.isTranscribing));
           Alert.alert('Recording Error', 'No audio data captured. Please try again.');
         }
       } catch (err) {
         console.error('Voice message error:', err);
+        // Remove the placeholder on error
+        setMessages(prev => prev.filter(m => !m.isTranscribing));
         Alert.alert('Error', 'Failed to process voice message: ' + (err as Error).message);
       } finally {
         setIsSending(false);
@@ -164,7 +181,7 @@ export default function ChatScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: ChatMessage }) => {
+  const renderItem = useCallback(({ item, index }: { item: ChatMessage; index: number }) => {
     const isUser = item.role === 'user';
     const isSystem = item.role === 'system';
 
@@ -182,6 +199,33 @@ export default function ChatScreen() {
           <Text style={styles.correctionArrow}>↓</Text>
           <Text style={styles.correctionBetter}>{correction.corrected}</Text>
           <Text style={styles.correctionExplanation}>{correction.explanation}</Text>
+        </Animated.View>
+      );
+    }
+
+    // Voice message bubble
+    if (item.isVoice) {
+      return (
+        <Animated.View
+          layout={Layout.springify()}
+          entering={FadeIn.duration(300)}
+          style={[
+            styles.bubble,
+            styles.voiceBubble,
+            { backgroundColor: userBubbleColor, alignSelf: 'flex-end' }
+          ]}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="mic" size={20} color="#fff" />
+            {item.isTranscribing ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={[styles.messageText, { color: '#fff', fontStyle: 'italic' }]}>Transcribing...</Text>
+              </View>
+            ) : (
+              <Text style={[styles.messageText, { color: '#fff' }]}>{item.content}</Text>
+            )}
+          </View>
         </Animated.View>
       );
     }
@@ -204,7 +248,7 @@ export default function ChatScreen() {
         )}
       </Animated.View>
     );
-  };
+  }, [targetLang, textColor, tintColor, userBubbleColor, aiBubbleColor]);
 
   return (
     <KeyboardAvoidingView
@@ -238,7 +282,7 @@ export default function ChatScreen() {
         ref={flatListRef}
         data={[...messages].reverse()}
         renderItem={renderItem}
-        keyExtractor={(_, i) => i.toString()}
+        keyExtractor={(item, i) => `msg-${messages.length - 1 - i}`}
         style={styles.flatList}
         contentContainerStyle={styles.listContent}
         inverted
@@ -323,6 +367,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 16,
     marginBottom: 12,
+  },
+  voiceBubble: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
   messageText: { fontSize: 16, lineHeight: 22 },
   speakIcon: { marginTop: 8, alignSelf: 'flex-start' },

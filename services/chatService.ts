@@ -4,6 +4,8 @@ import { supabase } from '@/utils/supabase';
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system';
     content: string;
+    isVoice?: boolean;
+    isTranscribing?: boolean;
 }
 
 export interface ChatResponse {
