@@ -20,7 +20,7 @@ export default function ChatScreen() {
   const { hasFeature, isPremium, isLoading: isFeatureLoading } = useFeatureAccess();
   const { bottom, top } = useSafeAreaInsets();
 
-  const backgroundColor = useThemeColor({}, 'background');
+  const backgroundColor = '#F6F7FB';
   const textColor = useThemeColor({}, 'text');
   const tintColor = useThemeColor({}, 'tint');
   const userBubbleColor = tintColor;
@@ -65,17 +65,23 @@ export default function ChatScreen() {
   if (!hasAccess) {
     return (
       <View style={[styles.container, { backgroundColor }]}>
-        <Paywall visible={paywallVisible} onClose={() => setPaywallVisible(false)} feature="AI Chat Tutor" />
-        <View style={styles.lockedContainer}>
-          <View style={[styles.iconCircle, { backgroundColor: tintColor + '15' }]}>
-            <Ionicons name="chatbubbles" size={64} color={tintColor} />
+        <View style={styles.premiumRequiredContainer}>
+          <View style={styles.premiumIconBadge}>
+            <Ionicons name="chatbubbles" size={48} color="#1976FF" />
           </View>
-          <Text style={[styles.title, { color: textColor }]}>AI Chat Tutor</Text>
-          <Text style={[styles.description, { color: textColor + '80' }]}>Practice conversations with an AI tutor.</Text>
-          <TouchableOpacity style={[styles.upgradeButton, { backgroundColor: tintColor }]} onPress={() => setPaywallVisible(true)}>
+          <Text style={styles.premiumTitle}>Premium Feature</Text>
+          <Text style={styles.premiumSubtitle}>
+            AI Tutor is available for Premium subscribers. Upgrade to practice conversations with an advanced AI tutor.
+          </Text>
+          <TouchableOpacity
+            style={styles.upgradeButton}
+            onPress={() => setPaywallVisible(true)}
+          >
+            <Ionicons name="diamond" size={18} color="#fff" />
             <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
           </TouchableOpacity>
         </View>
+        <Paywall visible={paywallVisible} onClose={() => setPaywallVisible(false)} feature="AI Chat Tutor" />
       </View>
     );
   }
@@ -436,12 +442,55 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   flatList: { flex: 1 },
   loadingText: { marginTop: 100, textAlign: 'center' },
-  lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  iconCircle: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
-  description: { textAlign: 'center', marginBottom: 30 },
-  upgradeButton: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 25 },
-  upgradeButtonText: { color: '#fff', fontWeight: 'bold' },
+
+  premiumRequiredContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  premiumIconBadge: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#E6F0FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  premiumTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#11181C',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  premiumSubtitle: {
+    fontSize: 16,
+    color: '#687076',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  upgradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1976FF',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    gap: 8,
+    shadowColor: '#1976FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  upgradeButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
 
   listContent: { padding: 16, paddingBottom: 20, flexGrow: 1 },
   bubble: {

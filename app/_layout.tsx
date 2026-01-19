@@ -1,11 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
 import * as Speech from 'expo-speech';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StatusBar } from 'expo-status-bar';
+import React, { useCallback, useEffect, useState } from 'react';
+import 'react-native-reanimated';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { supabase } from '../utils/supabase';
 
@@ -13,7 +14,7 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import LoginScreen from './LoginScreen';
 
 // Subscription imports
-import { initializeRevenueCat, setupPurchasesListener, logOutRevenueCat } from '../services/revenuecatService';
+import { initializeRevenueCat, logOutRevenueCat, setupPurchasesListener } from '../services/revenuecatService';
 import { useSubscriptionStore } from './store/useSubscriptionStore';
 import { useUsageStore } from './store/useUsageStore';
 
@@ -102,23 +103,32 @@ export default function RootLayout() {
     useUsageStore.getState().reset();
   }, []);
 
-  if (!loaded || !authChecked) {
-    return null;
-  }
+  const getContent = () => {
+    if (!loaded || !authChecked) {
+      return null;
+    }
 
-  if (!session) {
-    return <LoginScreen onLogin={() => {
-      supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    }} />;
-  }
+    if (!session) {
+      return <LoginScreen onLogin={() => {
+        supabase.auth.getSession().then(({ data }) => setSession(data.session));
+      }} />;
+    }
 
-  return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    return (
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="story" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="+not-found" />
       </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    );
+  };
+
+  return (
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        {getContent()}
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

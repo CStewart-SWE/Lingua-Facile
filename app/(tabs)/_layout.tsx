@@ -83,6 +83,13 @@ export default function TabLayout() {
             tabBarIcon: ({ color }) => <Ionicons size={28} name="chatbubbles" color={color} />,
           }}
         />
+        <Tabs.Screen
+          name="story-mode"
+          options={{
+            title: 'Story Mode',
+            tabBarIcon: ({ color }) => <Ionicons size={28} name="book-outline" color={color} />,
+          }}
+        />
       </Tabs>
     </>
   );

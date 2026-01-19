@@ -1,10 +1,10 @@
 // Feature access hook for subscription and usage gating
 import { useCallback, useMemo } from 'react';
 import { useSubscriptionStore } from '../app/store/useSubscriptionStore';
-import { useUsageStore, ActionType } from '../app/store/useUsageStore';
+import { ActionType, useUsageStore } from '../app/store/useUsageStore';
 
 // Features that require premium subscription
-type PremiumFeature = 'chat' | 'force_fresh_analysis' | 'unlimited_usage';
+type PremiumFeature = 'chat' | 'force_fresh_analysis' | 'unlimited_usage' | 'story_mode';
 
 // Features that are usage-gated
 type UsageGatedFeature = ActionType;
@@ -68,6 +68,10 @@ export const useFeatureAccess = (): FeatureAccessResult => {
 
       case 'unlimited_usage':
         // Premium users have unlimited usage
+        return isPremium && isActive;
+
+      case 'story_mode':
+        // Story mode is premium only
         return isPremium && isActive;
 
       default:
