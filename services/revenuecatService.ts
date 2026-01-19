@@ -1,15 +1,15 @@
 // RevenueCat service for subscription management
-import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import Purchases, {
   CustomerInfo,
+  LOG_LEVEL,
   PurchasesOfferings,
   PurchasesPackage,
-  LOG_LEVEL,
 } from 'react-native-purchases';
 import PurchasesUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
+import { SubscriptionStatus, SubscriptionTier, useSubscriptionStore } from '../app/store/useSubscriptionStore';
 import { supabase } from '../utils/supabase';
-import { useSubscriptionStore, SubscriptionTier, SubscriptionStatus } from '../app/store/useSubscriptionStore';
 
 // API keys from environment
 const REVENUECAT_IOS_KEY = Constants.expoConfig?.extra?.REVENUECAT_IOS_API_KEY;
@@ -265,7 +265,7 @@ export const setupPurchasesListener = (userId: string): (() => void) => {
 
   // Return cleanup function
   return () => {
-    listener.remove();
+    listener?.remove();
   };
 };
 

@@ -1,8 +1,7 @@
-
-import { Audio } from 'expo-av';
+import { RecordingPresets, useAudioRecorder as useExpoAudioRecorder } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
-import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
+import { useState } from 'react';
+import { Alert, Platform } from 'react-native';
 
 export interface RecordingResult {
     uri: string;
@@ -11,82 +10,63 @@ export interface RecordingResult {
 }
 
 export const useAudioRecorder = () => {
-    const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [isRecording, setIsRecording] = useState(false);
-    const [permissionResponse, requestPermission] = Audio.usePermissions();
+    const [lastUri, setLastUri] = useState<string | null>(null);
 
-    useEffect(() => {
-        // Cleanup on unmount
-        return () => {
-            if (recording) {
-                recording.stopAndUnloadAsync();
-            }
-        };
-    }, [recording]);
+    // Use expo-audio's built-in recorder hook
+    const recorder = useExpoAudioRecorder(RecordingPresets.HIGH_QUALITY, (status) => {
+        // Status listener
+        if (status.isFinished) {
+            console.log('Recording finished');
+        }
+    });
 
     const startRecording = async () => {
         try {
-            if (!permissionResponse || permissionResponse.status !== 'granted') {
-                const resp = await requestPermission();
-                if (resp.status !== 'granted') {
-                    Alert.alert('Permission needed', 'Microphone access is required for voice chat.');
-                    return;
-                }
-            }
-
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: true,
-                playsInSilentModeIOS: true,
-            });
-
-            console.log('Starting recording..');
-            const { recording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
-            );
-
-            setRecording(recording);
+            console.log('Starting recording...');
+            recorder.record();
             setIsRecording(true);
             console.log('Recording started');
         } catch (err) {
             console.error('Failed to start recording', err);
-            Alert.alert('Error', 'Failed to start recording');
+            Alert.alert('Error', 'Failed to start recording: ' + (err as Error).message);
         }
     };
 
     const stopRecording = async (): Promise<RecordingResult | null> => {
-        if (!recording) return null;
+        if (!isRecording) {
+            console.log('Not currently recording');
+            return null;
+        }
 
-        console.log('Stopping recording..');
-        setRecording(null);
+        console.log('Stopping recording...');
         setIsRecording(false);
 
         try {
-            await recording.stopAndUnloadAsync();
-            const uri = recording.getURI();
-            console.log('Recording stopped and stored at', uri);
+            const uri = await recorder.stop();
+            console.log('Recording stopped, saved at:', uri);
 
             if (!uri) return null;
-
-            // Get duration
-            const status = await recording.getStatusAsync();
-            const durationMillis = status.isDoneRecording ? status.durationMillis : 0;
+            setLastUri(uri);
 
             // Read as Base64 for upload
-            // On web this will be different, but assuming Mobile for now based on project rules
-            const base64 = await FileSystem.readAsStringAsync(uri, {
-                encoding: FileSystem.EncodingType.Base64
-            });
+            let base64: string | null = null;
+            if (Platform.OS !== 'web') {
+                try {
+                    base64 = await FileSystem.readAsStringAsync(uri, {
+                        encoding: 'base64' as any
+                    });
+                    console.log('Base64 length:', base64?.length);
+                } catch (e) {
+                    console.error('Failed to read file as base64:', e);
+                }
+            }
 
-            // Reset audio mode to allow playback (important on iOS)
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: false,
-                playsInSilentModeIOS: true,
-            });
-
-            return { uri, base64, durationMillis };
+            return { uri, base64, durationMillis: 0 };
 
         } catch (error) {
             console.error('Error stopping recording', error);
+            Alert.alert('Error', 'Failed to stop recording: ' + (error as Error).message);
             return null;
         }
     };
@@ -95,6 +75,6 @@ export const useAudioRecorder = () => {
         isRecording,
         startRecording,
         stopRecording,
-        hasPermission: permissionResponse?.status === 'granted',
+        hasPermission: true, // expo-audio handles permissions internally
     };
 };

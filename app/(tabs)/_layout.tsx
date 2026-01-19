@@ -1,7 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform, View, Text, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Platform, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/components/HapticTab';
@@ -74,6 +74,13 @@ export default function TabLayout() {
           options={{
             title: 'CEFR Checker',
             tabBarIcon: ({ color }) => <IconSymbol size={28} name="text.book.closed.fill" color={color} />, // You can change the icon name as desired
+          }}
+        />
+        <Tabs.Screen
+          name="ChatScreen"
+          options={{
+            title: 'AI Tutor',
+            tabBarIcon: ({ color }) => <Ionicons size={28} name="chatbubbles" color={color} />,
           }}
         />
       </Tabs>

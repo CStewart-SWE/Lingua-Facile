@@ -4,8 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Speech from 'expo-speech';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Paywall } from '../../components/subscription/Paywall';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 
@@ -15,22 +16,41 @@ import { ChatMessage, sendMessageToTutor } from '../../services/chatService';
 export default function ChatScreen() {
   const [paywallVisible, setPaywallVisible] = useState(false);
   const { hasFeature, isPremium, isLoading: isFeatureLoading } = useFeatureAccess();
+  const { bottom } = useSafeAreaInsets();
 
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
   const tintColor = useThemeColor({}, 'tint');
   const userBubbleColor = tintColor;
-  const aiBubbleColor = useThemeColor({}, 'card');
+  const aiBubbleColor = '#E6F0FF';
 
   // Chat State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [targetLang, setTargetLang] = useState('es'); // Default to Spanish, load later
+  const [targetLang, setTargetLang] = useState('es');
   const [userLevel, setUserLevel] = useState('intermediate');
 
   // Audio State
-  const { startRecording, stopRecording, isRecording, hasPermission } = useAudioRecorder();
+  const { startRecording, stopRecording, isRecording } = useAudioRecorder();
+
+  // Keyboard height tracking
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Load Preferences
   useEffect(() => {
@@ -40,7 +60,6 @@ export default function ChatScreen() {
     })();
   }, []);
 
-  // Auto-scroll to bottom
   const flatListRef = useRef<FlatList>(null);
 
   const hasAccess = hasFeature('chat');
@@ -67,11 +86,11 @@ export default function ChatScreen() {
     );
   }
 
-  const handleSend = async (audioBase64?: string) => {
+  const handleSend = async () => {
     const textToSend = inputText.trim();
-    if (!textToSend && !audioBase64) return;
+    if (!textToSend) return;
 
-    const newUserMsg: ChatMessage = { role: 'user', content: textToSend || "🎤 Voice Message..." };
+    const newUserMsg: ChatMessage = { role: 'user', content: textToSend };
     const updatedMessages = [...messages, newUserMsg];
 
     setMessages(updatedMessages);
@@ -79,31 +98,16 @@ export default function ChatScreen() {
     setIsSending(true);
 
     try {
-      const response = await sendMessageToTutor(updatedMessages, targetLang, userLevel, audioBase64);
+      const response = await sendMessageToTutor(updatedMessages, targetLang, userLevel);
 
-      // Handle Transcript if it was voice
-      if (response.user_transcript && audioBase64) {
-        // Update the last user message with the actual text
-        updatedMessages[updatedMessages.length - 1].content = response.user_transcript;
-        setMessages([...updatedMessages]);
-      }
-
-      // Add Assistant Response
       const aiMsg: ChatMessage = { role: 'assistant', content: response.reply };
-
-      // Inject correction as a separate system-like message or just render it differently?
-      // Let's add it to the messages list but with a special flag or handle it in UI properties.
-      // For simplicity, we just push the AI reply. We can store correction in local state or append.
-
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
 
-      // Auto-play AI response
       Speech.stop();
-      Speech.speak(response.reply, { language: targetLang }); // Best effort language code match
+      Speech.speak(response.reply, { language: targetLang });
 
       if (response.correction) {
-        // Add a "System" message for correction
         const correctionMsg: ChatMessage = {
           role: 'system',
           content: JSON.stringify(response.correction)
@@ -120,10 +124,38 @@ export default function ChatScreen() {
   };
 
   const handleMicPress = async () => {
+    console.log('Mic pressed, isRecording:', isRecording);
     if (isRecording) {
       const result = await stopRecording();
+      console.log('Recording result:', result);
       if (result && result.base64) {
-        handleSend(result.base64);
+        // Send audio to backend
+        const newUserMsg: ChatMessage = { role: 'user', content: '🎤 Voice message...' };
+        const updatedMessages = [...messages, newUserMsg];
+        setMessages(updatedMessages);
+        setIsSending(true);
+        try {
+          const response = await sendMessageToTutor(updatedMessages, targetLang, userLevel, result.base64);
+          console.log('Response from tutor:', response);
+          if (response.user_transcript) {
+            updatedMessages[updatedMessages.length - 1].content = response.user_transcript;
+            setMessages([...updatedMessages]);
+          }
+          const aiMsg: ChatMessage = { role: 'assistant', content: response.reply };
+          setMessages(prev => [...prev, aiMsg]);
+          Speech.speak(response.reply, { language: targetLang });
+          if (response.correction) {
+            const correctionMsg: ChatMessage = { role: 'system', content: JSON.stringify(response.correction) };
+            setMessages(prev => [...prev, correctionMsg]);
+          }
+        } catch (err) {
+          console.error('Voice message error:', err);
+          Alert.alert('Error', 'Failed to process voice message: ' + (err as Error).message);
+        } finally {
+          setIsSending(false);
+        }
+      } else {
+        Alert.alert('Recording Error', 'No audio data captured. Please try again.');
       }
     } else {
       await startRecording();
@@ -135,7 +167,6 @@ export default function ChatScreen() {
     const isSystem = item.role === 'system';
 
     if (isSystem) {
-      // Parse correction
       let correction;
       try { correction = JSON.parse(item.content); } catch (e) { return null; }
 
@@ -180,17 +211,22 @@ export default function ChatScreen() {
         data={messages}
         renderItem={renderItem}
         keyExtractor={(_, i) => i.toString()}
-        contentContainerStyle={styles.listContent}
+        style={styles.flatList}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="chatbubbles-outline" size={80} color={tintColor + '40'} />
+            <Text style={[styles.emptyText, { color: textColor + '60' }]}>
+              Start a conversation! Type a message below.
+            </Text>
+          </View>
+        }
       />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        style={[styles.inputContainer, { borderTopColor: textColor + '10', backgroundColor: backgroundColor }]}
-      >
+      <View style={[styles.inputContainer, { backgroundColor, bottom: keyboardHeight > 0 ? keyboardHeight : 0, paddingBottom: keyboardHeight > 0 ? 12 : bottom + 90 }]}>
         <TextInput
-          style={[styles.input, { backgroundColor: textColor + '05', color: textColor }]}
+          style={[styles.input, { backgroundColor: textColor + '10', color: textColor }]}
           placeholder="Type a message..."
           placeholderTextColor={textColor + '50'}
           value={inputText}
@@ -199,7 +235,7 @@ export default function ChatScreen() {
         />
 
         {inputText.length > 0 ? (
-          <TouchableOpacity onPress={() => handleSend()} disabled={isSending} style={[styles.sendButton, { backgroundColor: tintColor }]}>
+          <TouchableOpacity onPress={handleSend} disabled={isSending} style={[styles.sendButton, { backgroundColor: tintColor }]}>
             {isSending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-up" size={24} color="#fff" />}
           </TouchableOpacity>
         ) : (
@@ -207,20 +243,20 @@ export default function ChatScreen() {
             onPress={handleMicPress}
             style={[
               styles.micButton,
-              isRecording ? styles.micActive : null,
               { backgroundColor: isRecording ? '#FF4D4F' : tintColor + '20' }
             ]}
           >
             <Ionicons name={isRecording ? "stop" : "mic"} size={24} color={isRecording ? "#fff" : tintColor} />
           </TouchableOpacity>
         )}
-      </KeyboardAvoidingView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  flatList: { flex: 1 },
   loadingText: { marginTop: 100, textAlign: 'center' },
   lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   iconCircle: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
@@ -229,7 +265,7 @@ const styles = StyleSheet.create({
   upgradeButton: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 25 },
   upgradeButtonText: { color: '#fff', fontWeight: 'bold' },
 
-  listContent: { padding: 16, paddingBottom: 20 },
+  listContent: { padding: 16, paddingBottom: 20, flexGrow: 1 },
   bubble: {
     maxWidth: '80%',
     padding: 12,
@@ -241,7 +277,7 @@ const styles = StyleSheet.create({
 
   correctionContainer: {
     alignSelf: 'center',
-    backgroundColor: '#FFF9C4', // Soft yellow
+    backgroundColor: '#FFF9C4',
     padding: 12,
     borderRadius: 12,
     marginBottom: 16,
@@ -254,12 +290,17 @@ const styles = StyleSheet.create({
   correctionOriginal: { textDecorationLine: 'line-through', color: '#555', fontStyle: 'italic' },
   correctionArrow: { textAlign: 'center', fontSize: 16, color: '#F57F17', marginVertical: 2 },
   correctionBetter: { fontWeight: 'bold', color: '#000' },
-  correctionExplanation: { marginTop: 4, fontSize: 12, color: '#666' },
+  correctionExplanation: { marginTop: 4, fontSize: 12, color: '#666', flexWrap: 'wrap' },
 
   inputContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     padding: 12,
     borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
     alignItems: 'center',
     gap: 10,
   },
@@ -269,7 +310,7 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     fontSize: 16,
   },
   sendButton: {
@@ -286,7 +327,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  micActive: {
-    transform: [{ scale: 1.1 }],
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 100,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    textAlign: 'center',
+    maxWidth: '70%',
   }
 });
