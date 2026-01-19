@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"C:\\\\Users\\\\chris\\\\IdeaProjects\\\\Lingua-Facile\" remote -v)",
+      "Bash(cat:*)",
+      "Bash(git -C \"C:\\\\Users\\\\chris\\\\IdeaProjects\\\\Lingua-Facile\" status)",
+      "Bash(git -C \"C:\\\\Users\\\\chris\\\\IdeaProjects\\\\Lingua-Facile\" log --oneline -5)",
+      "Bash(git -C \"C:\\\\Users\\\\chris\\\\IdeaProjects\\\\Lingua-Facile\" add CLAUDE.md)",
+      "Bash(git -C \"C:\\\\Users\\\\chris\\\\IdeaProjects\\\\Lingua-Facile\" commit -m \"$\\(cat <<''EOF''\nAdd CLAUDE.md for Claude Code guidance\n\n🤖 Generated with [Claude Code]\\(https://claude.ai/code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(start http://localhost:8081)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(npx expo:*)",
+      "Bash(claude mcp list:*)",
+      "Bash(supabase --version:*)",
+      "Bash(npx supabase --version)",
+      "Bash(npx supabase:*)",
+      "Bash(claude mcp add:*)",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__deploy_edge_function",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__list_edge_functions",
+      "Bash(npm install:*)",
+      "Bash(npx eas build:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
+}
