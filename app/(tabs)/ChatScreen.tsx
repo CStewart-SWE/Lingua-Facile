@@ -3,7 +3,7 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Keyboard, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Paywall } from '../../components/subscription/Paywall';
@@ -33,39 +33,25 @@ export default function ChatScreen() {
   const [userLevel, setUserLevel] = useState('intermediate');
   const [langModalVisible, setLangModalVisible] = useState(false);
 
-
   // Audio State
   const { startRecording, stopRecording, isRecording } = useAudioRecorder();
 
-  // Keyboard height tracking
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
+  // Track keyboard open/closed for conditional padding
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   useEffect(() => {
     const showSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => setKeyboardHeight(e.endCoordinates.height)
+      () => setIsKeyboardOpen(true)
     );
     const hideSub = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setKeyboardHeight(0)
+      () => setIsKeyboardOpen(false)
     );
     return () => {
       showSub.remove();
       hideSub.remove();
     };
   }, []);
-
-  // Removed manual AsyncStorage sync - handled by store persistence
-
-
-  // Scroll to bottom when keyboard opens
-  useEffect(() => {
-    if (keyboardHeight > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 50);
-    }
-  }, [keyboardHeight]);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -221,9 +207,11 @@ export default function ChatScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor }]}>
-
-
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
 
       <ChatLanguageSettings
         visible={langModalVisible}
@@ -248,13 +236,12 @@ export default function ChatScreen() {
 
       <FlatList
         ref={flatListRef}
-        data={messages}
+        data={[...messages].reverse()}
         renderItem={renderItem}
         keyExtractor={(_, i) => i.toString()}
         style={styles.flatList}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 100 + keyboardHeight }]}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        contentContainerStyle={styles.listContent}
+        inverted
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="chatbubbles-outline" size={80} color={tintColor + '40'} />
@@ -263,7 +250,7 @@ export default function ChatScreen() {
             </Text>
           </View>
         }
-        ListFooterComponent={
+        ListHeaderComponent={
           isSending ? (
             <Animated.View entering={FadeIn} style={[styles.bubble, { backgroundColor: '#E6F0FF', alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
               <ActivityIndicator size="small" color={tintColor} />
@@ -273,7 +260,7 @@ export default function ChatScreen() {
         }
       />
 
-      <View style={[styles.inputContainer, { backgroundColor, bottom: keyboardHeight > 0 ? keyboardHeight : 0, paddingBottom: keyboardHeight > 0 ? 12 : bottom + 90 }]}>
+      <View style={[styles.inputContainer, { backgroundColor, paddingBottom: isKeyboardOpen ? 24 : bottom + 65 }]}>
         <TextInput
           style={[styles.input, { backgroundColor: textColor + '10', color: textColor }]}
           placeholder="Type a message..."
@@ -315,7 +302,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
         )}
       </View>
-    </View >
+    </KeyboardAvoidingView>
   );
 }
 
@@ -358,10 +345,6 @@ const styles = StyleSheet.create({
   correctionExplanation: { marginTop: 4, fontSize: 12, color: '#666', flexWrap: 'wrap' },
 
   inputContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     padding: 12,
     borderTopWidth: 1,
