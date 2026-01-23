@@ -1,11 +1,10 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { TTS } from '@/services/ttsService';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { MotiView } from 'moti';
-import * as Speech from 'expo-speech';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React from 'react';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 interface TranslationCardProps {
   isLoading: boolean;
@@ -18,6 +17,7 @@ interface TranslationCardProps {
   handleNewTranslation: () => void;
   pronunciation?: string;
   meaning?: string;
+  isPremium?: boolean;
 }
 
 export const TranslationCard: React.FC<TranslationCardProps> = ({
@@ -30,7 +30,8 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
   languages,
   handleNewTranslation,
   pronunciation,
-  meaning
+  meaning,
+  isPremium = false
 }) => {
   return (
     <Animated.View
@@ -63,7 +64,7 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
       ) : (
         <>
           <Text style={styles.translatedText}>{translatedText}</Text>
-          
+
           {featuresLoading ? (
             <View style={{ marginTop: 12 }}>
               <MotiView
@@ -72,7 +73,7 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
                 transition={{ loop: true, type: 'timing', duration: 900, repeatReverse: true }}
                 style={[styles.skeletonLine, { width: '40%', height: 16 }]}
               />
-               <MotiView
+              <MotiView
                 from={{ opacity: 0.4 }}
                 animate={{ opacity: 1 }}
                 transition={{ loop: true, type: 'timing', duration: 900, delay: 200, repeatReverse: true }}
@@ -84,44 +85,37 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
               {pronunciation && (
                 <Text style={styles.pronunciation}>{pronunciation}</Text>
               )}
-              
+
               {meaning ? (
                 <View style={styles.meaningContainer}>
                   <Text style={styles.meaningLabel}>MEANING</Text>
                   <Text style={styles.meaningText}>{meaning}</Text>
                 </View>
               ) : (
-                 <View style={styles.premiumLock}>
-                     <Ionicons name="lock-closed" size={12} color="#B0B0B0" style={{ marginRight: 4 }} />
-                     <Text style={styles.premiumText}>Meaning available with Premium</Text>
-                 </View>
+                <View style={styles.premiumLock}>
+                  <Ionicons name="lock-closed" size={12} color="#B0B0B0" style={{ marginRight: 4 }} />
+                  <Text style={styles.premiumText}>Meaning available with Premium</Text>
+                </View>
               )}
             </View>
           )}
 
           <View style={styles.footer}>
             <View style={styles.leftActions}>
-                <TouchableOpacity
-                    onPress={async () => {
-                      if (translatedText) {
-                        const voiceMapJson = await AsyncStorage.getItem('pronunciationVoiceMap');
-                        let voiceMap: any = {};
-                        if (voiceMapJson) voiceMap = JSON.parse(voiceMapJson);
-                        const langCode = (targetLang || 'en').split('-')[0];
-                        const selectedVoiceId = voiceMap[langCode];
-                        const voices = await Speech.getAvailableVoicesAsync();
-                        let selectedVoice = voices.find(v => v.identifier === selectedVoiceId) || voices.find(v => v.language.startsWith(langCode)) || voices[0];
-                        Speech.speak(translatedText, { language: targetLang || 'en', voice: selectedVoice?.identifier });
-                      }
-                    }}
-                    style={styles.actionIcon}
-                  >
-                    <Ionicons name="volume-high-outline" size={24} color="#1976FF" />
-                  </TouchableOpacity>
-                  
-                <TouchableOpacity onPress={() => Alert.alert('Favorite pressed')} style={styles.actionIcon}>
-                   <Ionicons name="heart-outline" size={24} color="#666" />
-                </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  if (translatedText) {
+                    TTS.speak(translatedText, { language: targetLang || 'en', isPremium });
+                  }
+                }}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="volume-high-outline" size={24} color="#1976FF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => Alert.alert('Favorite pressed')} style={styles.actionIcon}>
+                <Ionicons name="heart-outline" size={24} color="#666" />
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity
@@ -134,11 +128,11 @@ export const TranslationCard: React.FC<TranslationCardProps> = ({
               }}
               style={[styles.copyButton, copiedOutput && styles.copyButtonActive]}
             >
-              <Ionicons 
-                name={copiedOutput ? 'checkmark' : 'copy-outline'} 
-                size={16} 
-                color={copiedOutput ? '#fff' : '#1976FF'} 
-                style={{ marginRight: 6 }} 
+              <Ionicons
+                name={copiedOutput ? 'checkmark' : 'copy-outline'}
+                size={16}
+                color={copiedOutput ? '#fff' : '#1976FF'}
+                style={{ marginRight: 6 }}
               />
               <Text style={[styles.copyText, copiedOutput && { color: '#fff' }]}>
                 {copiedOutput ? 'Copied' : 'Copy'}

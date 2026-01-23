@@ -1,8 +1,8 @@
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { GeneratedStory, generateStory } from '@/services/storyService';
+import { TTS } from '@/services/ttsService';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as Speech from 'expo-speech';
 import { MotiView } from 'moti';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -26,6 +26,7 @@ type ActiveTab = 'story' | 'quiz';
 export default function StoryScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
+    const { isPremium } = useFeatureAccess();
     const params = useLocalSearchParams<{
         targetLang: string;
         sourceLang: string;
@@ -49,7 +50,7 @@ export default function StoryScreen() {
     useEffect(() => {
         loadStory();
         return () => {
-            Speech.stop();
+            TTS.stop();
         };
     }, []);
 
@@ -72,7 +73,7 @@ export default function StoryScreen() {
     };
 
     const handleClose = () => {
-        Speech.stop();
+        TTS.stop();
         Alert.alert(
             'Leave Story?',
             'Are you sure you want to exit? Your progress will be lost.',
@@ -88,7 +89,7 @@ export default function StoryScreen() {
         if (!story) return;
 
         if (isSpeaking) {
-            await Speech.stop();
+            await TTS.stop();
             setIsSpeaking(false);
             setCurrentWordIndex(-1);
             return;
@@ -100,43 +101,15 @@ export default function StoryScreen() {
         setCurrentWordIndex(0);
         setIsSpeaking(true);
 
-        const voiceMapJson = await AsyncStorage.getItem('pronunciationVoiceMap');
-        let voiceMap: Record<string, string> = {};
-        if (voiceMapJson) voiceMap = JSON.parse(voiceMapJson);
-        const langCode = (params.targetLang || 'en').split('-')[0];
-        const selectedVoiceId = voiceMap[langCode];
-        const voices = await Speech.getAvailableVoicesAsync();
-        const selectedVoice = voices.find(v => v.identifier === selectedVoiceId) ||
-            voices.find(v => v.language.startsWith(langCode)) ||
-            voices[0];
-
-        // Calculate word boundaries for highlighting
+        // Calculate word boundaries for highlighting fallback
         const textLength = story.story.length;
         const avgCharTime = 50; // Approximate ms per character
 
-        Speech.speak(story.story, {
+        // Use TTS service - premium users get ElevenLabs, with timing-based highlighting fallback
+        TTS.speak(story.story, {
             language: params.targetLang || 'en',
-            voice: selectedVoice?.identifier,
-            rate: 0.9,
-            onBoundary: (event: { charIndex?: number; charLength?: number }) => {
-                // This event provides word position info
-                if (event.charIndex !== undefined) {
-                    // Find which word we're on based on character index
-                    let charCount = 0;
-                    for (let i = 0; i < words.length; i++) {
-                        charCount += words[i].length;
-                        if (charCount >= event.charIndex) {
-                            setCurrentWordIndex(i);
-                            break;
-                        }
-                    }
-                }
-            },
+            isPremium,
             onDone: () => {
-                setIsSpeaking(false);
-                setCurrentWordIndex(-1);
-            },
-            onStopped: () => {
                 setIsSpeaking(false);
                 setCurrentWordIndex(-1);
             },
@@ -146,7 +119,7 @@ export default function StoryScreen() {
             }
         });
 
-        // Fallback highlighting using timing estimation
+        // Timing-based highlighting for all cases (works for both ElevenLabs and device TTS)
         const totalDuration = textLength * avgCharTime;
         const wordDuration = totalDuration / words.filter(w => w.trim()).length;
 
@@ -167,7 +140,7 @@ export default function StoryScreen() {
             }
         }, wordDuration);
 
-    }, [story, isSpeaking, params.targetLang]);
+    }, [story, isSpeaking, params.targetLang, isPremium]);
 
     const handleAnswerSelect = (questionIndex: number, selectedAnswer: string) => {
         if (quizAnswers.some(a => a.questionIndex === questionIndex)) {

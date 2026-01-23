@@ -1,7 +1,7 @@
 
 import { useThemeColor } from '@/hooks/useThemeColor';
+import { TTS } from '@/services/ttsService';
 import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, Layout } from 'react-native-reanimated';
@@ -104,8 +104,8 @@ export default function ChatScreen() {
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
 
-      Speech.stop();
-      Speech.speak(response.reply, { language: targetLang });
+      TTS.stop();
+      TTS.speak(response.reply, { language: targetLang, isPremium });
 
       if (response.correction) {
         const correctionMsg: ChatMessage = {
@@ -163,8 +163,8 @@ export default function ChatScreen() {
           const aiMsg: ChatMessage = { role: 'assistant', content: response.reply };
           setMessages(prev => [...prev, aiMsg]);
 
-          Speech.stop();
-          Speech.speak(response.reply, { language: targetLang });
+          TTS.stop();
+          TTS.speak(response.reply, { language: targetLang, isPremium });
 
           if (response.correction) {
             const correctionMsg: ChatMessage = { role: 'system', content: JSON.stringify(response.correction) };
@@ -316,7 +316,7 @@ export default function ChatScreen() {
           {!isUser && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
               <TouchableOpacity
-                onPress={(e) => { e.stopPropagation(); Speech.speak(item.content, { language: targetLang }); }}
+                onPress={(e) => { e.stopPropagation(); TTS.speak(item.content, { language: targetLang, isPremium }); }}
               >
                 <Ionicons name="volume-high" size={18} color={textColor + '80'} />
               </TouchableOpacity>

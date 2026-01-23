@@ -254,6 +254,7 @@ export default function TranslatorScreen() {
             handleNewTranslation={handleNewTranslation}
             pronunciation={features.pronunciation}
             meaning={features.meaning}
+            isPremium={isPremium}
           />
         )}
 
